@@ -8,8 +8,19 @@
 	--color-background: #fafafa;
 	--color-primary: #2e2e2e;
 	--color-fire: #ffa843;
+
+	--drop-shadow-soft: 0 0px 16px rgba(0, 0, 0, 0.04);
 }
 
 body {
+	color: theme('color-primary');
 	background-color: theme('color-background');
+}
+
+.material-symbols-outlined {
+	font-variation-settings:
+		'FILL' 1,
+		'wght' 400,
+		'GRAD' 0,
+		'opsz' 24;
 }
