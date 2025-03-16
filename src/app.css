@@ -4,4 +4,12 @@
 @theme {
 	--font-sans: 'DM Sans', 'sans-serif';
 	--font-serif: 'DM Serif Display', 'sans-serif';
+
+	--color-background: #fafafa;
+	--color-primary: #2e2e2e;
+	--color-fire: #ffa843;
+}
+
+body {
+	background-color: theme('color-background');
 }
