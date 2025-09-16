@@ -1,43 +1,86 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	let code = '';
+	import { fade } from 'svelte/transition';
 
-	function joinLobby() {
-		goto('/lobby');
-	}
-	function handleJoin() {
-		if (!code.trim()) {
-			alert('Code is Required!');
-			return;
+	let code = '';
+	let isLoading = false;
+	let errorMessage = '';
+
+	async function handleJoin() {
+		try {
+			errorMessage = '';
+
+			if (!code.trim()) {
+				errorMessage = 'Please enter a room code';
+				return;
+			}
+
+			if (code.length !== 4) {
+				errorMessage = 'Room code must be 4 digits';
+				return;
+			}
+
+			if (!/^\d+$/.test(code)) {
+				errorMessage = 'Room code must contain only numbers';
+				return;
+			}
+
+			isLoading = true;
+
+			// Add room validation before navigation
+			try {
+				const response = await fetch(`/api/rooms/${code}`);
+				if (!response.ok) {
+					throw new Error('Room not found');
+				}
+				await goto(`/lobby/${code}`);
+			} catch (e) {
+				errorMessage = 'Room not found or invalid';
+				return;
+			}
+		} catch (error) {
+			errorMessage = error instanceof Error ? error.message : 'Failed to join room';
+		} finally {
+			isLoading = false;
 		}
-		joinLobby();
 	}
 </script>
 
 <div class="mt-24 flex flex-col items-center justify-center">
 	<div class="drop-shadow-l flex flex-row items-center justify-center">
-		<span class="material-symbols-outlined flame-left mt-26 text-[90px] text-black"
-			>local_fire_department</span>
+		<span class="material-symbols-outlined flame-left mt-26 text-black">local_fire_department</span>
 		<span
 			class="material-symbols-outlined mt-26 inline-block text-black"
 			style="-webkit-text-stroke: 10px #ECECEC;">local_fire_department</span>
 		<span class="material-symbols-outlined flame-right mt-26 text-black"
 			>local_fire_department</span>
 	</div>
+
 	<div class="mt-20 space-y-2">
 		<p class="text-sans text-xs font-bold">ROOM CODE</p>
+		{#if errorMessage}
+			<p class="text-sm text-red-500" transition:fade>{errorMessage}</p>
+		{/if}
 		<input
 			type="text"
 			bind:value={code}
 			maxlength="4"
 			placeholder="Enter 4 digit code..."
-			class=" text-gray h-20 w-72 rounded-xl bg-stone-200 px-4 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] drop-shadow-xl outline-none placeholder:text-gray-700" />
+			class="text-gray h-20 w-72 rounded-xl bg-stone-200 px-4 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)]
+                   drop-shadow-xl outline-none placeholder:text-gray-700
+                   {errorMessage ? 'border-2 border-red-500' : ''}"
+			on:keypress={(e) => e.key === 'Enter' && handleJoin()} />
 	</div>
+
 	<button
-		class="mt-11 cursor-pointer justify-center rounded-xl bg-black px-16 py-3 font-sans text-[14px] font-bold tracking-widest text-white shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-gray-700"
+		class="mt-11 cursor-pointer justify-center rounded-xl bg-black px-16 py-3
+               font-sans text-[14px] font-bold tracking-widest text-white
+               shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-gray-700
+               disabled:cursor-not-allowed disabled:opacity-50"
 		on:click={handleJoin}
+		disabled={isLoading}
 		type="button">
-		JOIN
+		{isLoading ? 'JOINING...' : 'JOIN'}
 	</button>
 </div>
 

@@ -1,11 +1,15 @@
 <script lang="ts">
 	import { fade } from 'svelte/transition';
+	import { goto } from '$app/navigation';
 	import { supabase } from '$lib/supabaseClient';
+	import type { Program } from '$lib/types';
 
 	let showCreate = false;
 	let title = '';
 	let description = '';
 	let username = '';
+	let isLoading = false;
+	let errorMessage = '';
 
 	function handleStart() {
 		showCreate = true;
@@ -13,23 +17,67 @@
 
 	function handleClose() {
 		showCreate = false;
+		resetForm();
+	}
+
+	function resetForm() {
+		title = '';
+		description = '';
+		username = '';
+		errorMessage = '';
 	}
 
 	async function handleCreate() {
-		if (!title.trim()) {
-			alert('Please add a title');
-			return;
-		}
+		try {
+			errorMessage = '';
+			if (!title.trim()) {
+				errorMessage = 'Please add a title';
+				return;
+			}
+			if (!username.trim()) {
+				errorMessage = 'Please enter a username';
+				return;
+			}
 
-		const { data, error } = await supabase
-			.from('programs')
-			.insert({ title, description })
-			.select('id')
-			.single();
+			isLoading = true;
+			const roomCode = Math.floor(1000 + Math.random() * 9000).toString();
 
-		if (error) {
-			alert("Wasn't able to create the program.");
-			return;
+			const newProgram: Omit<Program, 'id' | 'created_at'> = {
+				title: title.trim(),
+				description: description.trim(),
+				created_by: username.trim(),
+				status: 'active'
+			};
+
+			console.log('Creating program:', { roomCode, ...newProgram });
+
+			const { data, error } = await supabase
+				.from('programs')
+				.insert({
+					id: roomCode,
+					...newProgram,
+					created_at: new Date().toISOString()
+				})
+				.select('id')
+				.single();
+
+			if (error) {
+				console.error('Supabase error:', error);
+				throw new Error(error.message);
+			}
+
+			if (!data?.id) {
+				throw new Error('No room ID returned from database');
+			}
+
+			console.log('Program created successfully:', data);
+			handleClose();
+			await goto(`/lobby/${data.id}`);
+		} catch (error) {
+			console.error('Create program error:', error);
+			errorMessage = error instanceof Error ? error.message : "Wasn't able to create the program.";
+		} finally {
+			isLoading = false;
 		}
 	}
 </script>
@@ -65,10 +113,19 @@
 			in:fade={{ duration: 200 }}
 			out:fade={{ duration: 150 }}>
 			<header class="flex justify-end">
-				<button type="button" class="text-2xl text-white hover:opacity-80" on:click={handleClose}>
+				<button
+					type="button"
+					class="text-2xl text-gray-500 hover:opacity-80"
+					on:click={handleClose}>
 					×
 				</button>
 			</header>
+
+			{#if errorMessage}
+				<div class="mb-4 rounded-md bg-red-50 p-3 text-red-500">
+					{errorMessage}
+				</div>
+			{/if}
 
 			<div class="mt-2 flex flex-col space-y-4">
 				<label class="flex flex-col">
@@ -104,8 +161,13 @@
 				<button
 					type="button"
 					on:click={handleCreate}
-					class="cursor-pointer rounded-full bg-[#ffa843] px-12 py-3 font-semibold text-white shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-[#e38b2d]">
-					Create
+					disabled={isLoading}
+					class="cursor-pointer rounded-full bg-[#ffa843] px-12 py-3 font-semibold text-white shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-[#e38b2d] disabled:opacity-50">
+					{#if isLoading}
+						Creating...
+					{:else}
+						Create
+					{/if}
 				</button>
 			</div>
 		</div>
