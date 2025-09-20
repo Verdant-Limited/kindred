@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { fade } from 'svelte/transition';
+	import { supabase } from '$lib/supabaseClient';
 
 	let code = '';
 	let isLoading = false;
@@ -27,18 +28,29 @@
 
 			isLoading = true;
 
-			// Add room validation before navigation
-			try {
-				const response = await fetch(`/api/rooms/${code}`);
-				if (!response.ok) {
+			// Query the correct table and field
+			const { data: room, error } = await supabase
+				.from('rooms') // Changed from 'programs' to 'rooms'
+				.select('*') // Select all fields to get room data
+				.eq('code', code) // Changed from 'id' to 'code')
+				.single();
+
+			if (error) {
+				console.error('Supabase error:', error);
+				if (error.code === 'PGRST116') {
 					throw new Error('Room not found');
 				}
-				await goto(`/lobby/${code}`);
-			} catch (e) {
-				errorMessage = 'Room not found or invalid';
-				return;
+				throw new Error('Failed to check room');
 			}
+
+			if (!room) {
+				throw new Error('Room not found');
+			}
+
+			// Navigate to the room using the code
+			await goto(`/lobby/${code}`);
 		} catch (error) {
+			console.error('Join error:', error);
 			errorMessage = error instanceof Error ? error.message : 'Failed to join room';
 		} finally {
 			isLoading = false;
@@ -49,9 +61,8 @@
 <div class="mt-24 flex flex-col items-center justify-center">
 	<div class="drop-shadow-l flex flex-row items-center justify-center">
 		<span class="material-symbols-outlined flame-left mt-26 text-black">local_fire_department</span>
-		<span
-			class="material-symbols-outlined mt-26 inline-block text-black"
-			style="-webkit-text-stroke: 10px #ECECEC;">local_fire_department</span>
+		<span class="material-symbols-outlined mt-26 inline-block text-black"
+			>local_fire_department</span>
 		<span class="material-symbols-outlined flame-right mt-26 text-black"
 			>local_fire_department</span>
 	</div>
