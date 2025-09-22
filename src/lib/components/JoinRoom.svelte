@@ -28,24 +28,28 @@
 
 			isLoading = true;
 
-			// Query the correct table and field
-			const { data: room, error } = await supabase
-				.from('rooms') // Changed from 'programs' to 'rooms'
-				.select('*') // Select all fields to get room data
-				.eq('code', code) // Changed from 'id' to 'code')
-				.single();
+			console.log('Searching for room with code:', code);
+
+			// Query the program using the 'id' column (text type)
+			const { data: programs, error } = await supabase
+				.from('programs')
+				.select('*')
+				.eq('id', code) // Query programs table by id column as string
+				.eq('status', 'active'); // Only find active programs
+
+			console.log('Query result:', { programs, error });
 
 			if (error) {
 				console.error('Supabase error:', error);
-				if (error.code === 'PGRST116') {
-					throw new Error('Room not found');
-				}
-				throw new Error('Failed to check room');
+				throw new Error('Failed to check program: ' + error.message);
 			}
 
-			if (!room) {
-				throw new Error('Room not found');
+			if (!programs || programs.length === 0) {
+				throw new Error('Program not found. Please check the code and try again.');
 			}
+
+			const program = programs[0];
+			console.log('Found program:', program);
 
 			// Navigate to the room using the code
 			await goto(`/lobby/${code}`);

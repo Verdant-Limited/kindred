@@ -279,20 +279,25 @@
 		</button>
 	</div>
 
-	<!-- Queue List -->
-	<ul class="queue-list">
-		{#each queue as item, i}
-			<li class="queue-item" style="opacity: {1 - i * 0.1};">
-				<span>{item.title}</span>
-				<button
-					on:click={() => queueOperations.removeFromQueue(i)}
-					class="close material-symbols-outlined text-[#ff7f50] hover:text-orange-600"
-					aria-label="Remove from queue">
-					close
-				</button>
-			</li>
-		{/each}
-	</ul>
+	<!-- Queue List with Scrolling -->
+	<div class="queue-container mt-4">
+		<ul class="queue-list">
+			{#each queue as item, i}
+				<li class="queue-item" style="opacity: {1 - i * 0.1};">
+					<span>{item.title}</span>
+					<button
+						on:click={() => queueOperations.removeFromQueue(i)}
+						class="close material-symbols-outlined text-[#ff7f50] hover:text-orange-600"
+						aria-label="Remove from queue">
+						close
+					</button>
+				</li>
+			{/each}
+		</ul>
+		{#if queue.length === 0}
+			<p class="py-8 text-center text-sm text-gray-500">No songs in queue</p>
+		{/if}
+	</div>
 </section>
 
 <!-- Search Modal -->
@@ -504,28 +509,68 @@
 	}
 
 	/* Fix scrollbar styling */
-	.queue-list {
+	.queue-container {
+		max-height: 300px; /* Adjust this value based on your needs */
+		overflow-y: auto;
+		padding-right: 4px; /* Space for scrollbar */
 		scrollbar-width: thin;
-		scrollbar-color: #ccc transparent;
+		scrollbar-color: #ff7f50 transparent;
 	}
 
-	.queue-list::-webkit-scrollbar {
-		width: 6px;
+	.queue-container::-webkit-scrollbar {
+		width: 8px;
 	}
 
-	.queue-list::-webkit-scrollbar-thumb {
-		background-color: #ccc;
-		border-radius: 3px;
+	.queue-container::-webkit-scrollbar-track {
+		background: transparent;
+		border-radius: 4px;
+	}
+
+	.queue-container::-webkit-scrollbar-thumb {
+		background-color: #ff7f50;
+		border-radius: 4px;
+		border: 1px solid transparent;
+		background-clip: content-box;
+	}
+
+	.queue-container::-webkit-scrollbar-thumb:hover {
+		background-color: #e6632d;
+	}
+
+	.queue-list {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		padding: 0;
+		margin: 0;
+		list-style: none;
 	}
 
 	.queue-item {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 8px 12px;
-		margin: 4px 0;
+		padding: 12px 16px;
 		background: white;
-		border-radius: 8px;
+		border-radius: 12px;
 		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+		transition:
+			transform 0.2s ease,
+			box-shadow 0.2s ease;
+	}
+
+	.queue-item:hover {
+		transform: translateY(-1px);
+		box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+	}
+
+	.queue-item span {
+		font-size: 14px;
+		font-weight: 500;
+		color: #333;
+		max-width: 200px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 </style>
