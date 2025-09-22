@@ -303,17 +303,17 @@
 <!-- Search Modal -->
 {#if showSearch}
 	<div
-		class="fixed right-18 bottom-0 left-18 z-10 h-[90%] w-[430px] rounded-t-[30px] bg-stone-300"
+		class="fixed inset-x-4 bottom-0 z-10 mx-auto h-[90%] max-w-md rounded-t-[30px] bg-stone-300 sm:inset-x-6 md:right-18 md:left-18 md:mx-0 md:w-[430px]"
 		in:slide|local={{ duration: 300 }}
 		out:slide|local={{ duration: 200 }}>
 		<!-- Header with close button -->
-		<div class="mt-6 flex flex-col items-center justify-center">
+		<div class="mt-6 flex flex-col items-center justify-center px-4">
 			<button
 				class="material-symbols-outlined slide cursor-pointer text-white"
 				on:click={() => (showSearch = false)}>remove</button>
 
 			<!-- Search Input -->
-			<div class="relative mt-4 w-80">
+			<div class="relative mt-4 w-full max-w-80">
 				<input
 					bind:value={searchQuery}
 					type="text"
@@ -328,7 +328,7 @@
 		</div>
 
 		<!-- Navigation Header -->
-		<div class="mt-6 mb-5 flex items-center justify-center">
+		<div class="mt-6 mb-5 flex items-center justify-center px-4">
 			{#if currentView === 'items'}
 				<button
 					on:click={goBackToCategories}
@@ -342,18 +342,18 @@
 		</div>
 
 		<!-- Content Area -->
-		<div class="flex flex-col items-center justify-start" style="height: calc(100% - 200px);">
+		<div class="flex flex-col items-center justify-start px-4" style="height: calc(100% - 200px);">
 			{#if currentView === 'categories'}
 				<!-- Categories List -->
 				{#if filteredCategories.length > 0}
 					<ul
-						class="flex flex-col items-center justify-start space-y-3 overflow-y-auto pb-4"
-						style="max-height: 100%; width: 90%; scroll-behavior: smooth;">
+						class="flex w-full flex-col items-center justify-start space-y-3 overflow-y-auto pb-4"
+						style="max-height: 100%; scroll-behavior: smooth;">
 						{#each filteredCategories as category}
-							<li class="flex items-center justify-center">
+							<li class="flex w-full items-center justify-center">
 								<button
 									type="button"
-									class="flex h-[60px] w-[360px] items-center justify-between rounded-[20px] bg-white px-6 font-sans font-medium shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200"
+									class="flex h-[60px] w-full max-w-[360px] items-center justify-between rounded-[20px] bg-white px-6 font-sans font-medium shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200"
 									on:click={() => selectCategory(category)}>
 									<span class="font-semibold">{category.name}</span>
 									<span class="material-symbols-outlined text-gray-400"> chevron_right </span>
@@ -368,11 +368,11 @@
 				<!-- Songs and Prayers List for Selected Category -->
 				{#if filteredCategoryItems.length > 0}
 					<ul
-						class="flex flex-col items-center justify-center space-y-3 overflow-y-auto pb-4"
-						style="max-height: 100%; width: 90%; scroll-behavior: smooth;">
+						class="flex w-full flex-col items-center justify-center space-y-3 overflow-y-auto pb-4"
+						style="max-height: 100%; scroll-behavior: smooth;">
 						{#each filteredCategoryItems as item}
 							<li
-								class="flex h-[70px] w-[360px] cursor-pointer items-center justify-between rounded-[20px] bg-white px-6 font-sans shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200">
+								class="flex h-[70px] w-full max-w-[360px] cursor-pointer items-center justify-between rounded-[20px] bg-white px-6 font-sans shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200">
 								<div class="flex flex-col">
 									<span class="font-semibold">{item.title}</span>
 									<span class="text-xs font-normal text-gray-500">
@@ -474,7 +474,7 @@
 
 	.flame:hover {
 		transform: scale(1.15);
-		filter: drop-shadow(0 0 12px rgba(255, 127, 80, 0.8))
+		filter: drop-shadow(0 0 12px rgba(255, 80, 80, 0.8))
 			drop-shadow(0 0 24px rgba(255, 127, 80, 0.6)) drop-shadow(0 0 36px rgba(255, 127, 80, 0.4));
 	}
 
