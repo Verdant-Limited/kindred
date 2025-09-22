@@ -303,114 +303,118 @@
 <!-- Search Modal -->
 {#if showSearch}
 	<div
-		class="fixed inset-x-4 bottom-0 z-10 mx-auto h-[90%] max-w-md rounded-t-[30px] bg-stone-300 sm:inset-x-6 md:right-18 md:left-18 md:mx-0 md:w-[430px]"
+		class="fixed inset-0 z-10 flex items-end justify-center px-4"
 		in:slide|local={{ duration: 300 }}
 		out:slide|local={{ duration: 200 }}>
-		<!-- Header with close button -->
-		<div class="mt-6 flex flex-col items-center justify-center px-4">
-			<button
-				class="material-symbols-outlined slide cursor-pointer text-white"
-				on:click={() => (showSearch = false)}>remove</button>
-
-			<!-- Search Input -->
-			<div class="relative mt-4 w-full max-w-80">
-				<input
-					bind:value={searchQuery}
-					type="text"
-					maxlength="20"
-					placeholder={currentView === 'categories' ? 'Search categories...' : 'Search items...'}
-					class="h-[60px] w-full rounded-[20px] bg-white pl-10 font-sans text-gray-400 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200" />
-				<span
-					class="material-symbols-outlined flame absolute top-1/2 left-1 -translate-y-1/2 transform text-[#ff7f50]">
-					local_fire_department
-				</span>
-			</div>
-		</div>
-
-		<!-- Navigation Header -->
-		<div class="mt-6 mb-5 flex items-center justify-center px-4">
-			{#if currentView === 'items'}
+		<div class="h-[90%] w-full max-w-md rounded-t-[30px] bg-stone-300">
+			<!-- Header with close button -->
+			<div class="mt-6 flex flex-col items-center justify-center px-4">
 				<button
-					on:click={goBackToCategories}
-					class="material-symbols-outlined mr-2 cursor-pointer text-black hover:text-gray-600">
-					arrow_back
-				</button>
-			{/if}
-			<h2 class="text-center font-sans text-[18px] font-medium tracking-wide text-black underline">
-				{currentView === 'categories' ? 'CATEGORIES' : selectedCategoryName.toUpperCase()}
-			</h2>
-		</div>
+					class="material-symbols-outlined slide cursor-pointer text-white"
+					on:click={() => (showSearch = false)}>remove</button>
 
-		<!-- Content Area -->
-		<div class="flex flex-col items-center justify-start px-4" style="height: calc(100% - 200px);">
-			{#if currentView === 'categories'}
-				<!-- Categories List -->
-				{#if filteredCategories.length > 0}
-					<ul
-						class="flex w-full flex-col items-center justify-start space-y-3 overflow-y-auto pb-4"
-						style="max-height: 100%; scroll-behavior: smooth;">
-						{#each filteredCategories as category}
-							<li class="flex w-full items-center justify-center">
-								<button
-									type="button"
-									class="flex h-[60px] w-full max-w-[360px] items-center justify-between rounded-[20px] bg-white px-6 font-sans font-medium shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200"
-									on:click={() => selectCategory(category)}>
-									<span class="font-semibold">{category.name}</span>
-									<span class="material-symbols-outlined text-gray-400"> chevron_right </span>
-								</button>
-							</li>
-						{/each}
-					</ul>
-				{:else}
-					<p class="mt-4 text-center text-sm text-gray-600">No matching categories found.</p>
+				<!-- Search Input -->
+				<div class="relative mt-4 w-full max-w-80">
+					<input
+						bind:value={searchQuery}
+						type="text"
+						maxlength="20"
+						placeholder={currentView === 'categories' ? 'Search categories...' : 'Search items...'}
+						class="h-[60px] w-full rounded-[20px] bg-white pl-10 font-sans text-gray-400 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200" />
+					<span
+						class="material-symbols-outlined flame absolute top-1/2 left-1 -translate-y-1/2 transform text-[#ff7f50]">
+						local_fire_department
+					</span>
+				</div>
+			</div>
+
+			<!-- Navigation Header -->
+			<div class="mt-6 mb-5 flex items-center justify-center px-4">
+				{#if currentView === 'items'}
+					<button
+						on:click={goBackToCategories}
+						class="material-symbols-outlined mr-2 cursor-pointer text-black hover:text-gray-600">
+						arrow_back
+					</button>
 				{/if}
-			{:else if currentView === 'items'}
-				<!-- Songs and Prayers List for Selected Category -->
-				{#if filteredCategoryItems.length > 0}
-					<ul
-						class="flex w-full flex-col items-center justify-center space-y-3 overflow-y-auto pb-4"
-						style="max-height: 100%; scroll-behavior: smooth;">
-						{#each filteredCategoryItems as item}
-							<li
-								class="flex h-[70px] w-full max-w-[360px] cursor-pointer items-center justify-between rounded-[20px] bg-white px-6 font-sans shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200">
-								<div class="flex flex-col">
-									<span class="font-semibold">{item.title}</span>
-									<span class="text-xs font-normal text-gray-500">
-										{'lyrics' in item ? 'Song' : 'Prayer'}
-									</span>
-								</div>
-								<div class="flex items-center space-x-2">
+				<h2
+					class="text-center font-sans text-[18px] font-medium tracking-wide text-black underline">
+					{currentView === 'categories' ? 'CATEGORIES' : selectedCategoryName.toUpperCase()}
+				</h2>
+			</div>
+
+			<!-- Content Area -->
+			<div
+				class="flex flex-col items-center justify-start px-4"
+				style="height: calc(100% - 200px);">
+				{#if currentView === 'categories'}
+					<!-- Categories List -->
+					{#if filteredCategories.length > 0}
+						<ul
+							class="flex w-full flex-col items-center justify-start space-y-3 overflow-y-auto pb-4"
+							style="max-height: 100%; scroll-behavior: smooth;">
+							{#each filteredCategories as category}
+								<li class="flex w-full items-center justify-center">
 									<button
-										on:click={() => fetchContent(item)}
-										class="material-symbols-outlined eye cursor-pointer rounded-full bg-gray-100 p-2 text-black hover:bg-gray-200"
-										title="View content">
-										visibility
+										type="button"
+										class="flex h-[60px] w-full max-w-[360px] items-center justify-between rounded-[20px] bg-white px-6 font-sans font-medium shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200"
+										on:click={() => selectCategory(category)}>
+										<span class="font-semibold">{category.name}</span>
+										<span class="material-symbols-outlined text-gray-400"> chevron_right </span>
 									</button>
-									<button
-										on:click={() => queueOperations.addToQueue(item)}
-										class="material-symbols-outlined plus cursor-pointer rounded-full bg-[#ff7f50] p-2 text-white hover:bg-orange-600"
-										title="Add to queue">
-										add
-									</button>
-								</div>
-							</li>
-						{/each}
-					</ul>
-				{:else}
-					<div class="mt-8 text-center">
-						<p class="text-sm text-gray-600">No songs or prayers found in this category.</p>
-						<button
-							on:click={goBackToCategories}
-							class="mt-4 rounded-lg bg-gray-500 px-4 py-2 font-sans text-white hover:bg-gray-600">
-							Back to Categories
-						</button>
-					</div>
+								</li>
+							{/each}
+						</ul>
+					{:else}
+						<p class="mt-4 text-center text-sm text-gray-600">No matching categories found.</p>
+					{/if}
+				{:else if currentView === 'items'}
+					<!-- Songs and Prayers List for Selected Category -->
+					{#if filteredCategoryItems.length > 0}
+						<ul
+							class="flex w-full flex-col items-center justify-center space-y-3 overflow-y-auto pb-4"
+							style="max-height: 100%; scroll-behavior: smooth;">
+							{#each filteredCategoryItems as item}
+								<li
+									class="flex h-[70px] w-full max-w-[360px] cursor-pointer items-center justify-between rounded-[20px] bg-white px-6 font-sans shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200">
+									<div class="flex flex-col">
+										<span class="font-semibold">{item.title}</span>
+										<span class="text-xs font-normal text-gray-500">
+											{'lyrics' in item ? 'Song' : 'Prayer'}
+										</span>
+									</div>
+									<div class="flex items-center space-x-2">
+										<button
+											on:click={() => fetchContent(item)}
+											class="material-symbols-outlined eye cursor-pointer rounded-full bg-gray-100 p-2 text-black hover:bg-gray-200"
+											title="View content">
+											visibility
+										</button>
+										<button
+											on:click={() => queueOperations.addToQueue(item)}
+											class="material-symbols-outlined plus cursor-pointer rounded-full bg-[#ff7f50] p-2 text-white hover:bg-orange-600"
+											title="Add to queue">
+											add
+										</button>
+									</div>
+								</li>
+							{/each}
+						</ul>
+					{:else}
+						<div class="mt-8 text-center">
+							<p class="text-sm text-gray-600">No songs or prayers found in this category.</p>
+							<button
+								on:click={goBackToCategories}
+								class="mt-4 rounded-lg bg-gray-500 px-4 py-2 font-sans text-white hover:bg-gray-600">
+								Back to Categories
+							</button>
+						</div>
+					{/if}
 				{/if}
-			{/if}
+			</div>
 		</div>
 	</div>
 {/if}
-
 <!-- Lyrics Modal -->
 {#if showLyrics}
 	<div
