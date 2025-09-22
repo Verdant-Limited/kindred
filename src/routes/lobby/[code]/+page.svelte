@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { supabase } from '$lib/supabaseClient';
 	import { slide } from 'svelte/transition';
 
@@ -63,31 +63,46 @@
 	let currentView: 'categories' | 'items' = 'categories';
 	let selectedCategoryName = '';
 
+	// Add program code from the route
+	$: programCode = data.room.id; // using room id as the program code
+
+	// Subscribe to real-time queue changes
+	let queueSubscription: any;
+
 	onMount(async () => {
 		try {
 			isLoading = true;
 
-			// Load Songs, Prayers, and Categories in parallel
-			const [songsResponse, prayersResponse, categoriesResponse] = await Promise.all([
-				supabase.from('songs').select(`
+			// Load Songs, Prayers, Categories, and Queue in parallel
+			const [songsResponse, prayersResponse, categoriesResponse, queueResponse] = await Promise.all(
+				[
+					supabase.from('songs').select(`
 						id,
 						title,
 						lyrics,
 						category_id
 					`),
 
-				supabase.from('prayers').select(`
+					supabase.from('prayers').select(`
 						id,
 						title,
 						content,
 						category_id
 					`),
 
-				supabase.from('categories').select(`
+					supabase.from('categories').select(`
 						id,
 						name
-					`)
-			]);
+					`),
+
+					// Load existing queue for this program
+					supabase
+						.from('program_queue')
+						.select('*')
+						.eq('program_code', programCode)
+						.order('position', { ascending: true })
+				]
+			);
 
 			// Handle Songs
 			if (songsResponse.error) {
@@ -112,6 +127,34 @@
 			}
 			categories = categoriesResponse.data || [];
 			console.log('✅ Categories loaded:', categories.length);
+
+			// Handle Queue
+			if (queueResponse.error) {
+				console.error('Supabase queue error:', queueResponse.error);
+				throw queueResponse.error;
+			}
+
+			// Reconstruct queue items from database
+			queue = await reconstructQueueItems(queueResponse.data || []);
+			console.log('✅ Queue loaded:', queue.length);
+
+			// Set up real-time subscription for queue changes
+			queueSubscription = supabase
+				.channel(`program_queue_${programCode}`)
+				.on(
+					'postgres_changes',
+					{
+						event: '*',
+						schema: 'public',
+						table: 'program_queue',
+						filter: `program_code=eq.${programCode}`
+					},
+					async (payload) => {
+						console.log('Queue change detected:', payload);
+						await loadQueue();
+					}
+				)
+				.subscribe();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load data';
 			console.error('❌ Error:', error);
@@ -120,20 +163,149 @@
 		}
 	});
 
+	// Cleanup subscription when component is destroyed
+	onDestroy(() => {
+		if (queueSubscription) {
+			supabase.removeChannel(queueSubscription);
+		}
+	});
+
+	// Function to reconstruct queue items from database records
+	async function reconstructQueueItems(queueRecords: any[]): Promise<QueueItem[]> {
+		const reconstructed: QueueItem[] = [];
+
+		for (const record of queueRecords) {
+			let item: QueueItem | null = null;
+
+			if (record.item_type === 'song') {
+				item = songs.find((s) => s.id === record.item_id) || null;
+			} else if (record.item_type === 'prayer') {
+				item = prayers.find((p) => p.id === record.item_id) || null;
+			}
+
+			if (item) {
+				reconstructed.push(item);
+			}
+		}
+
+		return reconstructed;
+	}
+
+	// Function to reload queue from database
+	async function loadQueue() {
+		try {
+			const { data: queueData, error: queueError } = await supabase
+				.from('program_queue')
+				.select('*')
+				.eq('program_code', programCode)
+				.order('position', { ascending: true });
+
+			if (queueError) {
+				console.error('Error loading queue:', queueError);
+				return;
+			}
+
+			queue = await reconstructQueueItems(queueData || []);
+		} catch (e) {
+			console.error('Error reloading queue:', e);
+		}
+	}
+
+	// Updated queue operations to use database
 	const queueOperations: QueueOperations<QueueItem> = {
-		addToQueue: (item) => {
-			if (!queue.some((q) => q.id === item.id)) {
-				queue = [...queue, item];
+		addToQueue: async (item) => {
+			try {
+				// Check if item is already in queue
+				const { data: existingItems, error: checkError } = await supabase
+					.from('program_queue')
+					.select('id')
+					.eq('program_code', programCode)
+					.eq('item_id', item.id)
+					.eq('item_type', 'lyrics' in item ? 'song' : 'prayer');
+
+				if (checkError) {
+					console.error('Error checking existing queue items:', checkError);
+					return;
+				}
+
+				if (existingItems && existingItems.length > 0) {
+					console.log('Item already in queue');
+					return;
+				}
+
+				// Get the next position
+				const { data: maxPositionData, error: maxError } = await supabase
+					.from('program_queue')
+					.select('position')
+					.eq('program_code', programCode)
+					.order('position', { ascending: false })
+					.limit(1);
+
+				if (maxError) {
+					console.error('Error getting max position:', maxError);
+					return;
+				}
+
+				const nextPosition =
+					maxPositionData && maxPositionData.length > 0 ? maxPositionData[0].position + 1 : 0;
+
+				// Add to database
+				const { error: insertError } = await supabase.from('program_queue').insert({
+					program_code: programCode,
+					item_id: item.id,
+					item_type: 'lyrics' in item ? 'song' : 'prayer',
+					title: item.title,
+					position: nextPosition
+				});
+
+				if (insertError) {
+					console.error('Error adding to queue:', insertError);
+				} else {
+					console.log('✅ Item added to queue:', item.title);
+				}
+			} catch (e) {
+				console.error('Error in addToQueue:', e);
 			}
 		},
-		removeFromQueue: (index) => {
-			const removedItem = queue[index];
-			queue = queue.filter((_, i) => i !== index);
 
-			// If we removed the currently displayed item, clear the lyrics
-			if (removedItem && removedItem.title === currentSong) {
-				lyrics = '';
-				currentSong = '';
+		removeFromQueue: async (index) => {
+			try {
+				if (index < 0 || index >= queue.length) return;
+
+				const itemToRemove = queue[index];
+
+				// Remove from database
+				const { error: deleteError } = await supabase
+					.from('program_queue')
+					.delete()
+					.eq('program_code', programCode)
+					.eq('item_id', itemToRemove.id)
+					.eq('item_type', 'lyrics' in itemToRemove ? 'song' : 'prayer');
+
+				if (deleteError) {
+					console.error('Error removing from queue:', deleteError);
+					return;
+				}
+
+				// Update positions for remaining items
+				const { error: updateError } = await supabase.rpc('update_queue_positions', {
+					program_code_param: programCode,
+					removed_position: index
+				});
+
+				if (updateError) {
+					console.error('Error updating positions:', updateError);
+				}
+
+				// Clear lyrics if we removed the currently displayed item
+				if (itemToRemove.title === currentSong) {
+					lyrics = '';
+					currentSong = '';
+				}
+
+				console.log('✅ Item removed from queue:', itemToRemove.title);
+			} catch (e) {
+				console.error('Error in removeFromQueue:', e);
 			}
 		}
 	};
