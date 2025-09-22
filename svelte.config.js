@@ -1,15 +1,10 @@
-import adapter from '@sveltejs/adapter-static';
-import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+import adapter from '@sveltejs/adapter-vercel';
+import preprocess from 'svelte-preprocess';
 
-/** @type {import('@sveltejs/kit').Config} */
 const config = {
-	preprocess: vitePreprocess(),
-
+	preprocess: preprocess(),
 	kit: {
-		adapter: adapter({
-			// This creates a fallback page for client-side routing
-			fallback: 'index.html'
-		})
+		adapter: adapter()
 	}
 };
 
