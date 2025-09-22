@@ -21,6 +21,7 @@
 		"@playwright/test": "^1.49.1",
 		"@sveltejs/adapter-auto": "^6.1.0",
 		"@sveltejs/adapter-static": "^3.0.9",
+		"@sveltejs/adapter-vercel": "^5.10.2",
 		"@sveltejs/kit": "^2.39.1",
 		"@sveltejs/vite-plugin-svelte": "^5.0.0",
 		"@tailwindcss/vite": "^4.0.0",
