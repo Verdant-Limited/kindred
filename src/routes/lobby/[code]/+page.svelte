@@ -11,12 +11,42 @@
 		category_id?: number;
 	}
 
+	interface SongChord {
+		id: number;
+		chord_format: string;
+		chords: string;
+		transpose_key: string | null;
+		capo_position: number | null;
+	}
+
+	interface MediaFile {
+		id: number;
+		file_type: string;
+		file_name: string;
+		google_drive_url: string | null;
+		direct_link: string | null;
+		mime_type: string | null;
+		metadata: any;
+	}
+
+	interface Tag {
+		id: number;
+		name: string;
+	}
+
 	interface Song extends BaseItem {
 		lyrics: string;
+		artist?: string | null;
+		language_id?: number | null;
+		source_id?: number | null;
+		chords?: SongChord[];
+		media?: MediaFile[];
+		tags?: Tag[];
 	}
 
 	interface Prayer extends BaseItem {
 		content: string;
+		author?: string | null;
 	}
 
 	interface Category {
@@ -55,6 +85,7 @@
 	let queue: QueueItem[] = [];
 	let lyrics = '';
 	let currentSong = '';
+	let currentAuthor: string = '';
 	let isLoading = false;
 	let error: ErrorType = null;
 
@@ -68,6 +99,13 @@
 
 	// Subscribe to real-time queue changes
 	let queueSubscription: any;
+
+	// Search state
+	let searchResults: { id: number; title: string; type: 'song' | 'prayer'; rank: number }[] = [];
+	let searching = false;
+	let searchError: string | null = null;
+	let searchMode: 'categories' | 'results' = 'categories';
+	let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	onMount(async () => {
 		try {
@@ -87,6 +125,7 @@
 						id,
 						title,
 						content,
+						author,
 						category_id
 					`),
 
@@ -262,6 +301,7 @@
 					console.error('Error adding to queue:', insertError);
 				} else {
 					console.log('✅ Item added to queue:', item.title);
+					incrementStat(item, 'use');
 				}
 			} catch (e) {
 				console.error('Error in addToQueue:', e);
@@ -301,6 +341,7 @@
 				if (itemToRemove.title === currentSong) {
 					lyrics = '';
 					currentSong = '';
+					currentAuthor = '';
 				}
 
 				console.log('✅ Item removed from queue:', itemToRemove.title);
@@ -327,10 +368,16 @@
 	}
 
 	async function fetchContent(item: QueueItem) {
-		const content = getContent(item);
-		lyrics = content;
+		if ('lyrics' in item && (item.chords == null || item.media == null)) {
+			await fetchSongComplete(item as Song);
+			currentAuthor = '';
+		} else {
+			currentAuthor = (item as Prayer).author ?? '';
+		}
+		lyrics = getContent(item);
 		currentSong = item.title;
 		showLyrics = true;
+		incrementStat(item, 'view');
 	}
 
 	async function fetchLyrics(song: Song) {
@@ -355,6 +402,7 @@
 
 	function openSearch() {
 		showSearch = true;
+		searchMode = 'categories';
 		currentView = 'categories';
 		selectedCategoryId = null;
 		selectedCategoryName = '';
@@ -374,6 +422,72 @@
 		if (currentSong !== firstItem.title) {
 			lyrics = getContent(firstItem);
 			currentSong = firstItem.title;
+			currentAuthor = 'lyrics' in firstItem ? '' : ((firstItem as Prayer).author ?? '');
+		}
+	}
+
+	// Debounced full‑text search (Supabase RPC)
+	async function runSearch(query: string) {
+		if (query.trim().length < 2) {
+			searchResults = [];
+			searchError = null;
+			return;
+		}
+		searching = true;
+		searchError = null;
+		try {
+			const { data, error } = await supabase.rpc('search_content', {
+				search_query: query,
+				content_type: 'all',
+				limit_count: 40
+			});
+			if (error) throw error;
+			searchResults = data ?? [];
+			searchMode = 'results';
+		} catch (e) {
+			searchError = e instanceof Error ? e.message : 'Search failed';
+		} finally {
+			searching = false;
+		}
+	}
+
+	// Watch searchQuery when modal open
+	$: if (showSearch) {
+		if (searchTimeout) clearTimeout(searchTimeout);
+		searchTimeout = setTimeout(() => runSearch(searchQuery), 250);
+	}
+
+	// Increment stats (view/use)
+	async function incrementStat(item: QueueItem, action: 'view' | 'use') {
+		try {
+			const content_type = 'lyrics' in item ? 'song' : 'prayer';
+			await supabase.rpc('update_content_stats', {
+				p_content_type: content_type,
+				p_content_id: item.id,
+				p_action: action
+			});
+		} catch (e) {
+			console.warn('Stat update failed', e);
+		}
+	}
+
+	// Fetch full song (lazy) for chords/media/tags
+	async function fetchSongComplete(song: Song) {
+		try {
+			const { data, error } = await supabase.rpc('get_song_complete', {
+				song_id_param: song.id
+			});
+			if (error) throw error;
+			if (data) {
+				const enriched = data.song;
+				song.chords = data.chords || [];
+				song.media = data.media || [];
+				song.tags = data.tags || [];
+				// merge any extra fields if needed
+				Object.assign(song, enriched);
+			}
+		} catch (e) {
+			console.error('Failed to load full song', e);
 		}
 	}
 </script>
@@ -456,7 +570,12 @@
 		<ul class="queue-list">
 			{#each queue as item, i}
 				<li class="queue-item" style="opacity: {1 - i * 0.1};">
-					<span>{item.title}</span>
+					<div class="flex flex-col">
+						<span>{item.title}</span>
+						{#if !('lyrics' in item) && (item as Prayer).author}
+							<span class="queue-author">{(item as Prayer).author}</span>
+						{/if}
+					</div>
 					<button
 						on:click={() => queueOperations.removeFromQueue(i)}
 						class="close material-symbols-outlined text-[#ff7f50] hover:text-orange-600"
@@ -471,6 +590,8 @@
 		{/if}
 	</div>
 </section>
+
+<!--Share Modal-->
 
 <!-- Search Modal -->
 {#if showSearch}
@@ -515,10 +636,40 @@
 				</h2>
 			</div>
 
-			<!-- Content Area -->
-			<div
-				class="flex flex-col items-center justify-start px-4"
-				style="height: calc(100% - 200px);">
+			<!-- Switch between categories/items and full-text results -->
+			{#if searchMode === 'results'}
+				<div class="mt-4 px-4">
+					{#if searching}
+						<p class="text-sm text-gray-600">Searching…</p>
+					{:else if searchError}
+						<p class="text-sm text-red-500">Search error: {searchError}</p>
+					{:else if searchResults.length === 0 && searchQuery.trim().length >= 2}
+						<p class="text-sm text-gray-600">No matches found.</p>
+					{/if}
+				</div>
+				<ul
+					class="flex flex-col items-center space-y-3 overflow-y-auto px-4 pb-6"
+					style="max-height: calc(100% - 230px);">
+					{#each searchResults as r}
+						<li class="w-full max-w-[360px]">
+							<button
+								type="button"
+								class="flex w-full items-center justify-between rounded-[20px] bg-white px-6 py-3 font-sans shadow-[0_4px_4px_rgba(0,0,0,0.25)] hover:bg-stone-200"
+								on:click={() => {
+									const item = (r.type === 'song' ? songs : prayers).find((x) => x.id === r.id);
+									if (item) fetchContent(item);
+								}}>
+								<span class="text-left">
+									<span class="block font-semibold">{r.title}</span>
+									<span class="block text-xs text-gray-500 capitalize">{r.type}</span>
+								</span>
+								<span class="text-xs text-gray-400">Rank {r.rank.toFixed(2)}</span>
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{:else}
+				<!-- existing categories/items UI unchanged -->
 				{#if currentView === 'categories'}
 					<!-- Categories List -->
 					{#if filteredCategories.length > 0}
@@ -554,6 +705,9 @@
 										<span class="text-xs font-normal text-gray-500">
 											{'lyrics' in item ? 'Song' : 'Prayer'}
 										</span>
+										{#if !('lyrics' in item) && (item as Prayer).author}
+											<span class="author-line">{(item as Prayer).author}</span>
+										{/if}
 									</div>
 									<div class="flex items-center space-x-2">
 										<button
@@ -583,36 +737,41 @@
 						</div>
 					{/if}
 				{/if}
-			</div>
+			{/if}
 		</div>
 	</div>
 {/if}
 <!-- Lyrics Modal -->
 {#if showLyrics}
 	<div
-		class="fixed right-18 bottom-0 left-18 z-10 h-[90%] w-[430px] rounded-t-[30px] bg-white"
+		class="fixed inset-0 z-10 flex items-end justify-center px-4"
 		in:slide|local={{ duration: 300 }}
 		out:slide|local={{ duration: 200 }}>
-		<div class="flex flex-col items-center justify-center">
-			<button
-				on:click={() => (showLyrics = false)}
-				class="material-symbols-outlined slide cursor-pointer text-[#ff7f50]">remove</button>
-		</div>
-		<h1 class="flex justify-center text-center font-sans font-bold text-[#ff7f50]">
-			{'lyrics' in (queue.find((item) => item.title === currentSong) ?? {}) ||
-			lyrics.includes('\n\n')
-				? 'Lyrics'
-				: 'Prayer'}
-		</h1>
-		<div
-			class=" overflow-y-auto p-4 text-center font-sans text-sm font-medium whitespace-pre-line text-[#ff7f50]"
-			style="max-height: 70%; width: 90%; margin: auto;">
-			{lyrics}
-		</div>
-		<div class="mt-15 flex items-center justify-center">
+		<div class="h-[90%] w-full max-w-md rounded-t-[30px] bg-white">
+			<div class="flex flex-col items-center justify-center">
+				<button
+					on:click={() => (showLyrics = false)}
+					class="material-symbols-outlined slide cursor-pointer text-[#ff7f50]">remove</button>
+			</div>
+			<h1 class="flex justify-center text-center font-sans font-bold text-[#ff7f50]">
+				{'lyrics' in (queue.find((item) => item.title === currentSong) ?? {}) ||
+				lyrics.includes('\n\n')
+					? 'Lyrics'
+					: 'Prayer'}
+			</h1>
 			<div
-				class="fixed bottom-5 flex h-15 w-90 transform items-center justify-center rounded-[20px] bg-white text-center font-sans text-2xl font-bold text-[#ff7f50] shadow-[0_4px_4px_0_rgba(0,0,0,0.25)]">
-				{currentSong}
+				class="overflow-y-auto p-4 text-center font-sans text-sm font-medium whitespace-pre-line text-[#ff7f50]"
+				style="max-height: 70%; width: 90%; margin: auto;">
+				{lyrics}
+				{#if currentAuthor}
+					<p class="author-line-modal after-content font-bold">{currentAuthor}</p>
+				{/if}
+			</div>
+			<div class="flex items-center justify-center">
+				<div
+					class="fixed bottom-5 left-1/2 flex h-15 w-90 -translate-x-1/2 transform items-center justify-center rounded-[20px] bg-white text-center font-sans text-2xl font-bold text-[#ff7f50] shadow-[0_4px_4px_0_rgba(0,0,0,0.25)]">
+					{currentSong}
+				</div>
 			</div>
 		</div>
 	</div>
@@ -748,5 +907,55 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	.author-line,
+	.queue-author,
+	.author-line-modal {
+		font-size: 11px;
+		line-height: 1.1;
+		color: #6b7280; /* gray-500 */
+		font-style: italic;
+		margin-top: 2px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 210px;
+	}
+
+	.queue-author {
+		font-size: 10px;
+		color: #ff7f50;
+	}
+
+	.author-line-modal {
+		text-align: right; /* right aligned "off centered" attribution */
+		margin-top: 12px;
+		font-size: 0.75rem;
+		line-height: 1.1;
+		color: #ff7f50; /* same color as content text */
+		font-style: italic;
+		opacity: 0.9;
+		padding-right: 4px;
+	}
+
+	.author-line-modal.after-content {
+		display: block;
+	}
+
+	/* (Optional) Slight fade-in */
+	.author-line-modal {
+		animation: fadeAuthor 0.35s ease;
+	}
+
+	@keyframes fadeAuthor {
+		from {
+			opacity: 0;
+			transform: translateY(4px);
+		}
+		to {
+			opacity: 0.9;
+			transform: translateY(0);
+		}
 	}
 </style>
