@@ -8,10 +8,3 @@ export interface Program {
 	created_at: string;
 	status: 'active' | 'completed' | 'cancelled';
 }
-
-// Add this temporary test function to CreateRoom.svelte
-async function testConnection() {
-	const { data, error } = await supabase.from('programs').select('*').limit(1);
-
-	console.log('Test connection:', { data, error });
-}
