@@ -12,6 +12,11 @@
 	--drop-shadow-soft: 0 0px 16px rgba(0, 0, 0, 0.04);
 }
 
+html,
+body {
+	min-height: 100dvh; /* dynamic viewport for mobile browsers */
+}
+
 body {
 	color: theme('color-primary');
 	background-color: theme('color-background');
