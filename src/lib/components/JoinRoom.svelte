@@ -62,7 +62,7 @@
 	}
 </script>
 
-<div class="mt-24 flex flex-col items-center justify-center">
+<div class="mt-16 flex flex-col items-center justify-center md:mt-24">
 	<div class="drop-shadow-l flex flex-row items-center justify-center">
 		<span class="material-symbols-outlined flame-left mt-26 text-black">local_fire_department</span>
 		<span class="material-symbols-outlined mt-26 inline-block text-black"
@@ -100,17 +100,18 @@
 </div>
 
 <style>
+	/* Scale flames responsively */
 	.material-symbols-outlined {
-		font-size: 200px;
+		font-size: clamp(120px, 30vw, 200px);
 		z-index: 2;
 	}
 	.flame-left {
-		font-size: 90px;
+		font-size: clamp(60px, 14vw, 90px);
 		transform: translateX(75%);
 		z-index: 1;
 	}
 	.flame-right {
-		font-size: 90px;
+		font-size: clamp(60px, 14vw, 90px);
 		transform: translateX(-75%);
 		z-index: 1;
 	}

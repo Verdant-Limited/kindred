@@ -576,7 +576,7 @@
 </div>
 
 <!-- Queue Section -->
-<section class="mt-10 px-20 py-4">
+<section class="mt-10 px-4 py-4 md:px-20">
 	<div class="flex items-center justify-between">
 		<h2 class="font-sans text-[10px] font-bold tracking-wide">QUEUED</h2>
 		<span
@@ -815,7 +815,7 @@
 			</div>
 			<div class="flex items-center justify-center">
 				<div
-					class="fixed bottom-5 left-1/2 flex h-15 w-90 -translate-x-1/2 transform items-center justify-center rounded-[20px] bg-white text-center font-sans text-2xl font-bold text-[#ff7f50] shadow-[0_4px_4px_0_rgba(0,0,0,0.25)]">
+					class="fixed bottom-5 left-1/2 flex h-15 w-[90%] -translate-x-1/2 transform items-center justify-center rounded-[20px] bg-white text-center font-sans text-2xl font-bold text-[#ff7f50] shadow-[0_4px_4px_0_rgba(0,0,0,0.25)]">
 					{currentSong}
 				</div>
 			</div>
