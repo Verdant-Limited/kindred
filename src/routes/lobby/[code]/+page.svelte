@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { supabase } from '$lib/supabaseClient';
 	import { slide } from 'svelte/transition';
 
@@ -106,6 +106,7 @@
 	let searchError: string | null = null;
 	let searchMode: 'categories' | 'results' = 'categories';
 	let searchTimeout: ReturnType<typeof setTimeout> | null = null;
+	let searchInputEl: HTMLInputElement | null = null;
 
 	onMount(async () => {
 		try {
@@ -288,6 +289,10 @@
 				const nextPosition =
 					maxPositionData && maxPositionData.length > 0 ? maxPositionData[0].position + 1 : 0;
 
+				// Optimistic update
+				const prevQueue = queue;
+				queue = [...queue, item];
+
 				// Add to database
 				const { error: insertError } = await supabase.from('program_queue').insert({
 					program_code: programCode,
@@ -299,10 +304,16 @@
 
 				if (insertError) {
 					console.error('Error adding to queue:', insertError);
-				} else {
-					console.log('✅ Item added to queue:', item.title);
-					incrementStat(item, 'use');
+					// revert optimistic update
+					queue = prevQueue;
+					return;
 				}
+
+				console.log('✅ Item added to queue:', item.title);
+				incrementStat(item, 'use');
+
+				// Final sync (in case of other clients)
+				await loadQueue();
 			} catch (e) {
 				console.error('Error in addToQueue:', e);
 			}
@@ -314,6 +325,10 @@
 
 				const itemToRemove = queue[index];
 
+				// Optimistic update
+				const prevQueue = queue;
+				queue = queue.filter((_, i) => i !== index);
+
 				// Remove from database
 				const { error: deleteError } = await supabase
 					.from('program_queue')
@@ -324,10 +339,12 @@
 
 				if (deleteError) {
 					console.error('Error removing from queue:', deleteError);
+					// revert optimistic update
+					queue = prevQueue;
 					return;
 				}
 
-				// Update positions for remaining items
+				// Update positions for remaining items on server
 				const { error: updateError } = await supabase.rpc('update_queue_positions', {
 					program_code_param: programCode,
 					removed_position: index
@@ -345,6 +362,9 @@
 				}
 
 				console.log('✅ Item removed from queue:', itemToRemove.title);
+
+				// Final sync to ensure order matches server
+				await loadQueue();
 			} catch (e) {
 				console.error('Error in removeFromQueue:', e);
 			}
@@ -400,13 +420,16 @@
 		searchQuery = ''; // Clear search when going back
 	}
 
-	function openSearch() {
+	async function openSearch() {
 		showSearch = true;
 		searchMode = 'categories';
 		currentView = 'categories';
 		selectedCategoryId = null;
 		selectedCategoryName = '';
 		searchQuery = '';
+		await tick();
+		searchInputEl?.focus();
+		searchInputEl?.select();
 	}
 
 	// Reactive statements
@@ -443,7 +466,7 @@
 			});
 			if (error) throw error;
 			searchResults = data ?? [];
-			searchMode = 'results';
+			// Do not auto-switch modes; stay in whatever the user chose.
 		} catch (e) {
 			searchError = e instanceof Error ? e.message : 'Search failed';
 		} finally {
@@ -454,7 +477,10 @@
 	// Watch searchQuery when modal open
 	$: if (showSearch) {
 		if (searchTimeout) clearTimeout(searchTimeout);
-		searchTimeout = setTimeout(() => runSearch(searchQuery), 250);
+		// Only run full‑text RPC when explicitly in 'results' mode.
+		if (searchMode === 'results') {
+			searchTimeout = setTimeout(() => runSearch(searchQuery), 250);
+		}
 	}
 
 	// Increment stats (view/use)
@@ -553,7 +579,8 @@
 <section class="mt-10 px-20 py-4">
 	<div class="flex items-center justify-between">
 		<h2 class="font-sans text-[10px] font-bold tracking-wide">QUEUED</h2>
-		<span class="mr-39 h-6 w-6 rounded-full bg-white pl-1.5 font-semibold">
+		<span
+			class="mr-39 inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-white px-1.5 text-center font-semibold">
 			{queue.length}
 		</span>
 		<button
@@ -609,6 +636,7 @@
 				<!-- Search Input -->
 				<div class="relative mt-4 w-full max-w-80">
 					<input
+						bind:this={searchInputEl}
 						bind:value={searchQuery}
 						type="text"
 						maxlength="20"
@@ -636,15 +664,36 @@
 				</h2>
 			</div>
 
+			<!-- Mode toggle -->
+			<div class="mb-2 flex items-center justify-center gap-2">
+				<button
+					class="rounded-full px-3 py-1 font-sans text-sm {searchMode === 'categories'
+						? 'bg-white'
+						: 'bg-stone-200'}"
+					on:click={() => (searchMode = 'categories')}>
+					Browse
+				</button>
+				<button
+					class="rounded-full px-3 py-1 font-sans text-sm {searchMode === 'results'
+						? 'bg-white'
+						: 'bg-stone-200'}"
+					on:click={() => {
+						searchMode = 'results';
+						if (searchQuery.trim().length >= 2) runSearch(searchQuery);
+					}}>
+					Global results
+				</button>
+			</div>
+
 			<!-- Switch between categories/items and full-text results -->
 			{#if searchMode === 'results'}
 				<div class="mt-4 px-4">
 					{#if searching}
-						<p class="text-sm text-gray-600">Searching…</p>
+						<p class="text-center text-sm text-gray-600">Searching…</p>
 					{:else if searchError}
-						<p class="text-sm text-red-500">Search error: {searchError}</p>
+						<p class="text-center text-sm text-red-500">Search error: {searchError}</p>
 					{:else if searchResults.length === 0 && searchQuery.trim().length >= 2}
-						<p class="text-sm text-gray-600">No matches found.</p>
+						<p class="text-center text-sm text-gray-600">No matches found.</p>
 					{/if}
 				</div>
 				<ul
@@ -699,17 +748,14 @@
 							style="max-height: 100%; scroll-behavior: smooth;">
 							{#each filteredCategoryItems as item}
 								<li
-									class="flex h-[70px] w-full max-w-[360px] cursor-pointer items-center justify-between rounded-[20px] bg-white px-6 font-sans shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200">
-									<div class="flex flex-col">
-										<span class="font-semibold">{item.title}</span>
-										<span class="text-xs font-normal text-gray-500">
-											{'lyrics' in item ? 'Song' : 'Prayer'}
-										</span>
-										{#if !('lyrics' in item) && (item as Prayer).author}
-											<span class="author-line">{(item as Prayer).author}</span>
-										{/if}
+									class="grid h-[70px] w-full max-w-[360px] grid-cols-[1fr_auto] items-center rounded-[20px] bg-white px-6 font-sans shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200">
+									<!-- Centered title -->
+									<div class="col-start-1 col-end-2 flex w-full justify-center">
+										<span class="block max-w-[220px] truncate text-center font-semibold"
+											>{item.title}</span>
 									</div>
-									<div class="flex items-center space-x-2">
+									<!-- Action buttons (right) -->
+									<div class="col-start-2 col-end-3 ml-3 flex items-center space-x-2">
 										<button
 											on:click={() => fetchContent(item)}
 											class="material-symbols-outlined eye cursor-pointer rounded-full bg-gray-100 p-2 text-black hover:bg-gray-200"
@@ -820,7 +866,7 @@
 		}
 		100% {
 			filter: drop-shadow(0 0 12px rgba(255, 127, 80, 0.8))
-				drop-shadow(0 0 20px rgba(255, 127, 80, 0.5)) drop-shadow(0 0 28px rgba(255, 127, 80, 0.3));
+				drop-shadow(0 0 20px rgba(255, 127, 80, 5)) drop-shadow(0 0 28px rgba(255, 127, 80, 0.3));
 		}
 	}
 
@@ -909,7 +955,6 @@
 		white-space: nowrap;
 	}
 
-	.author-line,
 	.queue-author,
 	.author-line-modal {
 		font-size: 11px;
