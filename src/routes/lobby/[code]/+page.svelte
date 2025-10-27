@@ -108,6 +108,36 @@
 	let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 	let searchInputEl: HTMLInputElement | null = null;
 
+	// Drag state
+	let dragStartY = 0;
+	let dragDeltaY = 0;
+	let dragging = false;
+	let activePointerId: number | null = null;
+	let searchSheetEl: HTMLDivElement | null = null;
+	const CLOSE_DRAG_PX = 120;
+
+	function handleDragStart(e: PointerEvent) {
+		activePointerId = e.pointerId;
+		dragging = true;
+		dragStartY = e.clientY;
+		dragDeltaY = 0;
+	}
+
+	function handleDragMove(e: PointerEvent) {
+		if (!dragging || e.pointerId !== activePointerId) return;
+		dragDeltaY = Math.max(0, e.clientY - dragStartY);
+	}
+
+	function handleDragEnd(e: PointerEvent) {
+		if (!dragging || e.pointerId !== activePointerId) return;
+		dragging = false;
+		if (dragDeltaY > CLOSE_DRAG_PX) {
+			showSearch = false; // close the search modal
+		}
+		dragDeltaY = 0;
+		activePointerId = null;
+	}
+
 	onMount(async () => {
 		try {
 			isLoading = true;
@@ -518,6 +548,8 @@
 	}
 </script>
 
+<svelte:window on:pointermove={handleDragMove} on:pointerup={handleDragEnd} />
+
 <!-- Header -->
 <div class="flex items-center justify-between px-3 py-4">
 	<h1 class="pt-6 pl-6 font-sans text-xl font-semibold tracking-widest text-black">KINDLED</h1>
@@ -626,7 +658,17 @@
 		class="fixed inset-0 z-10 flex items-end justify-center px-4"
 		in:slide|local={{ duration: 300 }}
 		out:slide|local={{ duration: 200 }}>
-		<div class="h-[90%] w-full max-w-md rounded-t-[30px] bg-stone-300">
+		<div
+			bind:this={searchSheetEl}
+			class="h-[90%] w-full max-w-md rounded-t-[30px] bg-stone-300"
+			style="transform: translateY({dragDeltaY}px); transition: {dragging
+				? 'none'
+				: 'transform 200ms ease'};">
+			<!-- Drag handle -->
+			<div class="drag-handle-area" on:pointerdown={handleDragStart} title="Drag down to close">
+				<div class="drag-handle-bar"></div>
+			</div>
+
 			<!-- Header with close button -->
 			<div class="mt-6 flex flex-col items-center justify-center px-4">
 				<button
@@ -1002,5 +1044,25 @@
 			opacity: 0.9;
 			transform: translateY(0);
 		}
+	}
+
+	/* Drag-to-close handle */
+	.drag-handle-area {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		padding-top: 8px;
+		padding-bottom: 4px;
+		cursor: grab;
+		touch-action: none; /* prevent scroll while dragging the handle */
+	}
+	.drag-handle-area:active {
+		cursor: grabbing;
+	}
+	.drag-handle-bar {
+		width: 48px;
+		height: 5px;
+		background: #d1d5db; /* gray-300 */
+		border-radius: 9999px;
 	}
 </style>
