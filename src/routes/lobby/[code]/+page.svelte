@@ -673,7 +673,8 @@
 			<div class="mt-6 flex flex-col items-center justify-center px-4">
 				<button
 					class="material-symbols-outlined slide cursor-pointer text-white"
-					on:click={() => (showSearch = false)}>remove</button>
+					on:click={() => (showSearch = false)}
+					on:pointerdown={handleDragStart}>remove</button>
 
 				<!-- Search Input -->
 				<div class="relative mt-4 w-full max-w-80">
@@ -923,6 +924,9 @@
 	}
 	.slide {
 		font-size: var(--icon-size-xl);
+		touch-action: none; /* allow smooth drag without scrolling */
+		user-select: none;
+		-webkit-user-select: none;
 	}
 	.plus {
 		font-size: var(--icon-size-lg);
