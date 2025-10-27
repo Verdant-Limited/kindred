@@ -82,7 +82,7 @@
 	}
 </script>
 
-<div class="mt-36 flex flex-col items-center justify-center">
+<div class="mt-20 md:mt-36 flex flex-col items-center justify-center">
 	<span class="fire material-symbols-outlined mt-26 text-black">local_fire_department</span>
 
 	<div class="mt-2 flex flex-col items-center justify-center">
@@ -176,7 +176,8 @@
 
 <style>
 	.fire {
-		font-size: 200px;
+		/* Scale icon sensibly on small phones */
+		font-size: clamp(120px, 30vw, 200px);
 		z-index: 2;
 	}
 </style>
