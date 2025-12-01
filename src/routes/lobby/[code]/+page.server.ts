@@ -36,8 +36,7 @@ export const load: PageServerLoad = async ({ params }) => {
 				createdBy: room.created_by
 			}
 		};
-	} catch (err) {
-		console.error('Failed to load room:', err);
+	} catch {
 		throw error(500, {
 			message: 'Failed to load room'
 		});
