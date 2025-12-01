@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { fade } from 'svelte/transition';
-	import { supabase } from '$lib/supabaseClient';
+	import { supabase } from '$lib/config/supabaseClient';
 
 	let code = '';
 	let isLoading = false;

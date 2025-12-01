@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy, tick } from 'svelte';
-	import { supabase } from '$lib/supabaseClient';
+	import { supabase } from '$lib/config/supabaseClient';
 	import { slide } from 'svelte/transition';
 
 	export let data;
@@ -98,6 +98,10 @@
 	let searchMode: 'categories' | 'results' = 'categories';
 	let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 	let searchInputEl: HTMLInputElement | null = null;
+
+	// Success notification state
+	let showSuccessMessage = false;
+	let successMessageTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	// Drag state
 	let dragStartY = 0;
@@ -329,13 +333,19 @@
 				console.log('✅ Item added to queue:', item.title);
 				incrementStat(item, 'use');
 
+				// Show success message
+				showSuccessMessage = true;
+				if (successMessageTimeout) clearTimeout(successMessageTimeout);
+				successMessageTimeout = setTimeout(() => {
+					showSuccessMessage = false;
+				}, 2000);
+
 				// Final sync (in case of other clients)
 				await loadQueue();
 			} catch (e) {
 				console.error('Error in addToQueue:', e);
 			}
 		},
-
 		removeFromQueue: async (index) => {
 			try {
 				if (index < 0 || index >= queue.length) return;
@@ -537,6 +547,16 @@
 		share
 	</button>
 </div>
+
+<!-- Success Notification -->
+{#if showSuccessMessage}
+	<div
+		class="fixed top-20 left-1/2 z-50 -translate-x-1/2 transform rounded-lg bg-[#ff7f50] px-6 py-3 font-sans text-white shadow-lg"
+		in:slide={{ duration: 200 }}
+		out:slide={{ duration: 200 }}>
+		✓ Added successfully
+	</div>
+{/if}
 
 <!-- Loading State -->
 {#if isLoading}
@@ -835,12 +855,6 @@
 				{#if currentAuthor}
 					<p class="author-line-modal after-content font-bold">{currentAuthor}</p>
 				{/if}
-			</div>
-			<div class="flex items-center justify-center">
-				<div
-					class="fixed bottom-5 left-1/2 flex h-15 w-[90%] -translate-x-1/2 transform items-center justify-center rounded-[20px] bg-white text-center font-sans text-2xl font-bold text-[#ff7f50] shadow-[0_4px_4px_0_rgba(0,0,0,0.25)]">
-					{currentSong}
-				</div>
 			</div>
 		</div>
 	</div>

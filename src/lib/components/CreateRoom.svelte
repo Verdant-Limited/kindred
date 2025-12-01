@@ -1,8 +1,15 @@
 <script lang="ts">
 	import { fade } from 'svelte/transition';
 	import { goto } from '$app/navigation';
-	import { supabase } from '$lib/supabaseClient';
-	import type { Program } from '$lib/types';
+	import { supabase } from '$lib/config/supabaseClient';
+	type Program = {
+		id: string;
+		title: string;
+		description?: string;
+		created_by: string;
+		created_at: string;
+		status: 'active' | 'inactive' | 'ended' | string;
+	};
 
 	let showCreate = false;
 	let title = '';
