@@ -2,6 +2,7 @@
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { supabase } from '$lib/config/supabaseClient';
 	import { slide } from 'svelte/transition';
+	// QR code lib will be dynamically imported on client only
 
 	export let data;
 
@@ -78,6 +79,39 @@
 	let currentAuthor: string = '';
 	let isLoading = false;
 	let error: ErrorType = null;
+
+	// Share UI state
+	let showShare = false;
+	let qrSrc = '';
+	let shareUrl = '';
+
+	async function openShare() {
+		try {
+			showShare = true;
+			await tick();
+			// Build a shareable URL to this lobby
+			if (typeof window !== 'undefined') {
+				shareUrl = `${window.location.origin}/lobby/${programCode}`;
+				const QR = await import('qrcode');
+				qrSrc = await QR.toDataURL(shareUrl, {
+					width: 160,
+					margin: 1,
+					color: { dark: '#000000', light: '#FFFFFF' }
+				});
+			}
+		} catch (e) {
+			console.warn('Failed generating QR', e);
+			qrSrc = '';
+		}
+	}
+
+	async function copyCode() {
+		try {
+			await navigator.clipboard.writeText(String(programCode));
+		} catch (e) {
+			console.warn('Copy failed', e);
+		}
+	}
 
 	// New state for hierarchical navigation
 	let selectedCategoryId: number | null = null;
@@ -543,7 +577,10 @@
 <!-- Header -->
 <div class="flex items-center justify-between px-3 py-4">
 	<h1 class="pt-6 pl-6 font-sans text-xl font-semibold tracking-widest text-black">KINDLED</h1>
-	<button class="material-symbols-outlined share cursor-pointer pt-6 pr-6" aria-label="Share">
+	<button
+		class="material-symbols-outlined share cursor-pointer pt-6 pr-6"
+		aria-label="Share"
+		on:click={openShare}>
 		share
 	</button>
 </div>
@@ -650,7 +687,71 @@
 	</div>
 </section>
 
-<!--Share Modal-->
+<!-- Share Modal (small box) -->
+{#if showShare}
+	<div class="fixed inset-0 z-20 flex items-center justify-center bg-black/20 px-4">
+		<div
+			class="relative w-full max-w-sm rounded-[20px] bg-white p-4 shadow-[0_4px_12px_rgba(0,0,0,0.25)]">
+			<button
+				on:click={() => (showShare = false)}
+				class="material-symbols-outlined absolute top-2 right-2 cursor-pointer text-[#ff7f50] hover:text-orange-600">
+				close
+			</button>
+			<h3 class="mb-3 text-center font-sans text-sm font-bold tracking-wide text-[#ff7f50]">
+				SHARE ROOM
+			</h3>
+			<div class="grid grid-cols-[auto_1fr] items-center gap-3">
+				<!-- QR -->
+				<div
+					class="flex h-[160px] w-[160px] items-center justify-center rounded-[12px] bg-white shadow-[0_2px_6px_rgba(0,0,0,0.15)]">
+					{#if qrSrc}
+						<img src={qrSrc} alt="QR Code for room" class="h-[150px] w-[150px]" />
+					{:else}
+						<div class="flex h-[150px] w-[150px] items-center justify-center text-xs text-gray-500">
+							QR unavailable
+						</div>
+					{/if}
+				</div>
+				<!-- Code + actions -->
+				<div class="flex min-w-0 flex-col justify-center">
+					<p class="font-sans text-[10px] font-bold tracking-wide text-gray-500">ROOM CODE</p>
+					<div class="mt-1 flex items-center gap-2">
+						<span class="truncate font-sans text-2xl font-extrabold tracking-widest text-[#ff7f50]">
+							{programCode}
+						</span>
+						<button
+							on:click={copyCode}
+							class="material-symbols-outlined flex h-8 w-8 items-center justify-center rounded-full bg-stone-200 text-black hover:bg-stone-300"
+							title="Copy code">
+							content_copy
+						</button>
+					</div>
+					<p class="mt-4 line-clamp-2 text-xs break-all text-gray-500">
+						{shareUrl}
+					</p>
+					<div class="mt-3 flex gap-2">
+						<button
+							class="rounded-[12px] bg-black px-3 py-2 font-sans text-xs font-bold tracking-widest text-white hover:bg-gray-700"
+							on:click={() => {
+								if (navigator.share) {
+									navigator.share({ title: 'Join my room', url: shareUrl }).catch(() => {});
+								}
+							}}>
+							NATIVE SHARE
+						</button>
+						<a
+							class="rounded-[12px] bg-stone-200 px-3 py-2 font-sans text-xs font-semibold text-black hover:bg-stone-300"
+							href={shareUrl}
+							target="_blank"
+							rel="noreferrer">
+							OPEN LINK
+						</a>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <!-- Search Modal -->
 {#if showSearch}

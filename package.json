@@ -53,6 +53,7 @@
 		"@types/node-fetch": "^2.6.13",
 		"lodash-es": "^4.17.21",
 		"node-fetch": "^3.3.2",
+		"qrcode": "^1.5.4",
 		"zod": "^4.1.8"
 	}
 }
