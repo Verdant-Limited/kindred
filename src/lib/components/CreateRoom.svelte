@@ -1,8 +1,15 @@
 <script lang="ts">
 	import { fade } from 'svelte/transition';
 	import { goto } from '$app/navigation';
-	import { supabase } from '$lib/supabaseClient';
-	import type { Program } from '$lib/types';
+	import { supabase } from '$lib/config/supabaseClient';
+	type Program = {
+		id: string;
+		title: string;
+		description?: string;
+		created_by: string;
+		created_at: string;
+		status: 'active' | 'inactive' | 'ended' | string;
+	};
 
 	let showCreate = false;
 	let title = '';
@@ -49,8 +56,6 @@
 				status: 'active'
 			};
 
-			console.log('Creating program:', { roomCode, ...newProgram });
-
 			const { data, error } = await supabase
 				.from('programs')
 				.insert({
@@ -62,7 +67,6 @@
 				.single();
 
 			if (error) {
-				console.error('Supabase error:', error);
 				throw new Error(error.message);
 			}
 
@@ -70,11 +74,9 @@
 				throw new Error('No room ID returned from database');
 			}
 
-			console.log('Program created successfully:', data);
 			handleClose();
 			await goto(`/lobby/${data.id}`);
 		} catch (error) {
-			console.error('Create program error:', error);
 			errorMessage = error instanceof Error ? error.message : "Wasn't able to create the program.";
 		} finally {
 			isLoading = false;
@@ -82,7 +84,7 @@
 	}
 </script>
 
-<div class="mt-20 md:mt-36 flex flex-col items-center justify-center">
+<div class="mt-20 flex flex-col items-center justify-center md:mt-36">
 	<span class="fire material-symbols-outlined mt-26 text-black">local_fire_department</span>
 
 	<div class="mt-2 flex flex-col items-center justify-center">

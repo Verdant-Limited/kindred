@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { fade } from 'svelte/transition';
-	import { supabase } from '$lib/supabaseClient';
+	import { supabase } from '$lib/config/supabaseClient';
 
 	let code = '';
 	let isLoading = false;
@@ -28,8 +28,6 @@
 
 			isLoading = true;
 
-			console.log('Searching for room with code:', code);
-
 			// Query the program using the 'id' column (text type)
 			const { data: programs, error } = await supabase
 				.from('programs')
@@ -37,10 +35,7 @@
 				.eq('id', code) // Query programs table by id column as string
 				.eq('status', 'active'); // Only find active programs
 
-			console.log('Query result:', { programs, error });
-
 			if (error) {
-				console.error('Supabase error:', error);
 				throw new Error('Failed to check program: ' + error.message);
 			}
 
@@ -48,13 +43,9 @@
 				throw new Error('Program not found. Please check the code and try again.');
 			}
 
-			const program = programs[0];
-			console.log('Found program:', program);
-
 			// Navigate to the room using the code
 			await goto(`/lobby/${code}`);
 		} catch (error) {
-			console.error('Join error:', error);
 			errorMessage = error instanceof Error ? error.message : 'Failed to join room';
 		} finally {
 			isLoading = false;
