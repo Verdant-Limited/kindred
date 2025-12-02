@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy, tick } from 'svelte';
-	import { supabase } from '$lib/supabaseClient';
+	import { supabase } from '$lib/config/supabaseClient';
 	import { slide } from 'svelte/transition';
 	// QR code lib will be dynamically imported on client only
 
@@ -27,7 +27,7 @@
 		google_drive_url: string | null;
 		direct_link: string | null;
 		mime_type: string | null;
-		metadata: any;
+		metadata: Record<string, unknown> | null;
 	}
 
 	interface Tag {
@@ -65,16 +65,6 @@
 		addToQueue: (item: T) => void;
 		removeFromQueue: (index: number) => void;
 	}
-
-	interface LoadingState {
-		isLoading: boolean;
-		error: ErrorType;
-	}
-
-	let loadingState: LoadingState = {
-		isLoading: false,
-		error: null
-	};
 
 	// State management
 	let showSearch = false;
@@ -132,6 +122,7 @@
 	$: programCode = data.room.id; // using room id as the program code
 
 	// Subscribe to real-time queue changes
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	let queueSubscription: any;
 
 	// Search state
@@ -141,6 +132,10 @@
 	let searchMode: 'categories' | 'results' = 'categories';
 	let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 	let searchInputEl: HTMLInputElement | null = null;
+
+	// Success notification state
+	let showSuccessMessage = false;
+	let successMessageTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	// Drag state
 	let dragStartY = 0;
@@ -210,37 +205,29 @@
 
 			// Handle Songs
 			if (songsResponse.error) {
-				console.error('Supabase songs error:', songsResponse.error);
 				throw songsResponse.error;
 			}
 			songs = songsResponse.data || [];
-			console.log('✅ Songs loaded:', songs.length);
 
 			// Handle Prayers
 			if (prayersResponse.error) {
-				console.error('Supabase prayers error:', prayersResponse.error);
 				throw prayersResponse.error;
 			}
 			prayers = prayersResponse.data || [];
-			console.log('✅ Prayers loaded:', prayers.length);
 
 			// Handle Categories
 			if (categoriesResponse.error) {
-				console.error('Supabase categories error:', categoriesResponse.error);
 				throw categoriesResponse.error;
 			}
 			categories = categoriesResponse.data || [];
-			console.log('✅ Categories loaded:', categories.length);
 
 			// Handle Queue
 			if (queueResponse.error) {
-				console.error('Supabase queue error:', queueResponse.error);
 				throw queueResponse.error;
 			}
 
 			// Reconstruct queue items from database
 			queue = await reconstructQueueItems(queueResponse.data || []);
-			console.log('✅ Queue loaded:', queue.length);
 
 			// Set up real-time subscription for queue changes
 			queueSubscription = supabase
@@ -253,15 +240,13 @@
 						table: 'program_queue',
 						filter: `program_code=eq.${programCode}`
 					},
-					async (payload) => {
-						console.log('Queue change detected:', payload);
+					async () => {
 						await loadQueue();
 					}
 				)
 				.subscribe();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load data';
-			console.error('❌ Error:', error);
 		} finally {
 			isLoading = false;
 		}
@@ -275,7 +260,13 @@
 	});
 
 	// Function to reconstruct queue items from database records
-	async function reconstructQueueItems(queueRecords: any[]): Promise<QueueItem[]> {
+	async function reconstructQueueItems(
+		queueRecords: Array<{
+			item_id: number;
+			item_type: string;
+			position: number;
+		}>
+	): Promise<QueueItem[]> {
 		const reconstructed: QueueItem[] = [];
 
 		for (const record of queueRecords) {
@@ -376,13 +367,19 @@
 				console.log('✅ Item added to queue:', item.title);
 				incrementStat(item, 'use');
 
+				// Show success message
+				showSuccessMessage = true;
+				if (successMessageTimeout) clearTimeout(successMessageTimeout);
+				successMessageTimeout = setTimeout(() => {
+					showSuccessMessage = false;
+				}, 2000);
+
 				// Final sync (in case of other clients)
 				await loadQueue();
 			} catch (e) {
 				console.error('Error in addToQueue:', e);
 			}
 		},
-
 		removeFromQueue: async (index) => {
 			try {
 				if (index < 0 || index >= queue.length) return;
@@ -464,12 +461,6 @@
 		incrementStat(item, 'view');
 	}
 
-	async function fetchLyrics(song: Song) {
-		lyrics = song.lyrics;
-		currentSong = song.title;
-		showLyrics = true;
-	}
-
 	function selectCategory(category: Category) {
 		selectedCategoryId = category.id;
 		selectedCategoryName = category.name;
@@ -502,7 +493,6 @@
 		? [...songs, ...prayers].filter((item) => item.category_id === selectedCategoryId)
 		: [];
 	$: filteredCategoryItems = filterItems(categoryItems, searchQuery);
-	$: currentSongDisplay = queue[0]?.title || '';
 
 	$: if (showLyrics && queue.length > 0) {
 		const firstItem = queue[0];
@@ -595,6 +585,16 @@
 	</button>
 </div>
 
+<!-- Success Notification -->
+{#if showSuccessMessage}
+	<div
+		class="fixed top-20 left-1/2 z-50 -translate-x-1/2 transform rounded-lg bg-[#ff7f50] px-6 py-3 font-sans text-white shadow-lg"
+		in:slide={{ duration: 200 }}
+		out:slide={{ duration: 200 }}>
+		✓ Added successfully
+	</div>
+{/if}
+
 <!-- Loading State -->
 {#if isLoading}
 	<div class="mt-10 flex items-center justify-center">
@@ -664,7 +664,7 @@
 	<!-- Queue List with Scrolling -->
 	<div class="queue-container mt-4">
 		<ul class="queue-list">
-			{#each queue as item, i}
+			{#each queue as item, i (item.id)}
 				<li class="queue-item" style="opacity: {1 - i * 0.1};">
 					<div class="flex flex-col">
 						<span>{item.title}</span>
@@ -774,7 +774,8 @@
 			<div class="mt-6 flex flex-col items-center justify-center px-4">
 				<button
 					class="material-symbols-outlined slide cursor-pointer text-white"
-					on:click={() => (showSearch = false)}>remove</button>
+					on:click={() => (showSearch = false)}
+					on:pointerdown={handleDragStart}>remove</button>
 
 				<!-- Search Input -->
 				<div class="relative mt-4 w-full max-w-80">
@@ -842,7 +843,7 @@
 				<ul
 					class="flex flex-col items-center space-y-3 overflow-y-auto px-4 pb-6"
 					style="max-height: calc(100% - 230px);">
-					{#each searchResults as r}
+					{#each searchResults as r (`${r.type}-${r.id}`)}
 						<li class="w-full max-w-[360px]">
 							<button
 								type="button"
@@ -868,7 +869,7 @@
 						<ul
 							class="flex w-full flex-col items-center justify-start space-y-3 overflow-y-auto pb-4"
 							style="max-height: 100%; scroll-behavior: smooth;">
-							{#each filteredCategories as category}
+							{#each filteredCategories as category (category.id)}
 								<li class="flex w-full items-center justify-center">
 									<button
 										type="button"
@@ -889,7 +890,7 @@
 						<ul
 							class="flex w-full flex-col items-center justify-center space-y-3 overflow-y-auto pb-4"
 							style="max-height: 100%; scroll-behavior: smooth;">
-							{#each filteredCategoryItems as item}
+							{#each filteredCategoryItems as item (item.id)}
 								<li
 									class="grid h-[70px] w-full max-w-[360px] grid-cols-[1fr_auto] items-center rounded-[20px] bg-white px-6 font-sans shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200">
 									<!-- Centered title -->
@@ -956,12 +957,6 @@
 					<p class="author-line-modal after-content font-bold">{currentAuthor}</p>
 				{/if}
 			</div>
-			<div class="flex items-center justify-center">
-				<div
-					class="fixed bottom-5 left-1/2 flex h-15 w-[90%] -translate-x-1/2 transform items-center justify-center rounded-[20px] bg-white text-center font-sans text-2xl font-bold text-[#ff7f50] shadow-[0_4px_4px_0_rgba(0,0,0,0.25)]">
-					{currentSong}
-				</div>
-			</div>
 		</div>
 	</div>
 {/if}
@@ -1024,6 +1019,9 @@
 	}
 	.slide {
 		font-size: var(--icon-size-xl);
+		touch-action: none; /* allow smooth drag without scrolling */
+		user-select: none;
+		-webkit-user-select: none;
 	}
 	.plus {
 		font-size: var(--icon-size-lg);
