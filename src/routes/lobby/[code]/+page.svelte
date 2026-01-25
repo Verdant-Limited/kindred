@@ -143,17 +143,29 @@
 	let dragging = false;
 	let activePointerId: number | null = null;
 	let searchSheetEl: HTMLDivElement | null = null;
+	let dragHandleEl: HTMLDivElement | null = null;
 	const CLOSE_DRAG_PX = 120;
 
 	function handleDragStart(e: PointerEvent) {
+		// Only start dragging if the pointer started on the drag handle
+		if (!dragHandleEl || !e.composedPath().includes(dragHandleEl)) {
+			return;
+		}
+
 		activePointerId = e.pointerId;
 		dragging = true;
 		dragStartY = e.clientY;
 		dragDeltaY = 0;
+
+		// Capture pointer events on the handle element
+		if (dragHandleEl) {
+			dragHandleEl.setPointerCapture(e.pointerId);
+		}
 	}
 
 	function handleDragMove(e: PointerEvent) {
 		if (!dragging || e.pointerId !== activePointerId) return;
+		e.preventDefault(); // Prevent scrolling during drag
 		dragDeltaY = Math.max(0, e.clientY - dragStartY);
 	}
 
@@ -165,6 +177,11 @@
 		}
 		dragDeltaY = 0;
 		activePointerId = null;
+
+		// Release pointer capture
+		if (dragHandleEl && dragHandleEl.hasPointerCapture(e.pointerId)) {
+			dragHandleEl.releasePointerCapture(e.pointerId);
+		}
 	}
 
 	onMount(async () => {
@@ -572,8 +589,6 @@
 	}
 </script>
 
-<svelte:window on:pointermove={handleDragMove} on:pointerup={handleDragEnd} />
-
 <!-- Header -->
 <div class="flex items-center justify-between px-3 py-4">
 	<h1 class="pt-6 pl-6 font-sans text-xl font-semibold tracking-widest text-black">KINDLED</h1>
@@ -766,7 +781,14 @@
 				? 'none'
 				: 'transform 200ms ease'};">
 			<!-- Drag handle -->
-			<div class="drag-handle-area" on:pointerdown={handleDragStart} title="Drag down to close">
+			<div
+				bind:this={dragHandleEl}
+				class="drag-handle-area"
+				on:pointerdown={handleDragStart}
+				on:pointermove={handleDragMove}
+				on:pointerup={handleDragEnd}
+				on:pointercancel={handleDragEnd}
+				title="Drag down to close">
 				<div class="drag-handle-bar"></div>
 			</div>
 
@@ -774,8 +796,7 @@
 			<div class="mt-6 flex flex-col items-center justify-center px-4">
 				<button
 					class="material-symbols-outlined slide cursor-pointer text-white"
-					on:click={() => (showSearch = false)}
-					on:pointerdown={handleDragStart}>remove</button>
+					on:click={() => (showSearch = false)}>remove</button>
 
 				<!-- Search Input -->
 				<div class="relative mt-4 w-full max-w-80">
@@ -868,7 +889,7 @@
 					{#if filteredCategories.length > 0}
 						<ul
 							class="flex w-full flex-col items-center justify-start space-y-3 overflow-y-auto pb-4"
-							style="max-height: 100%; scroll-behavior: smooth;">
+							style="max-height: 100%; scroll-behavior: smooth; touch-action: pan-y;">
 							{#each filteredCategories as category (category.id)}
 								<li class="flex w-full items-center justify-center">
 									<button
@@ -889,7 +910,7 @@
 					{#if filteredCategoryItems.length > 0}
 						<ul
 							class="flex w-full flex-col items-center justify-center space-y-3 overflow-y-auto pb-4"
-							style="max-height: 100%; scroll-behavior: smooth;">
+							style="max-height: 100%; scroll-behavior: smooth; touch-action: pan-y;">
 							{#each filteredCategoryItems as item (item.id)}
 								<li
 									class="grid h-[70px] w-full max-w-[360px] grid-cols-[1fr_auto] items-center rounded-[20px] bg-white px-6 font-sans shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200">
@@ -1019,9 +1040,6 @@
 	}
 	.slide {
 		font-size: var(--icon-size-xl);
-		touch-action: none; /* allow smooth drag without scrolling */
-		user-select: none;
-		-webkit-user-select: none;
 	}
 	.plus {
 		font-size: var(--icon-size-lg);
