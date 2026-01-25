@@ -30,23 +30,29 @@ Go to your GitHub repository:
 Add these two secrets:
 
 #### `SUPABASE_FUNCTION_URL`
+
 Your cleanup function URL:
+
 ```
 https://YOUR_PROJECT_REF.supabase.co/functions/v1/cleanup-rooms
 ```
 
 To find your project ref:
+
 - Go to Supabase Dashboard
 - Settings → General
 - Copy "Reference ID"
 
 #### `SUPABASE_ANON_KEY`
+
 Your Supabase anon/public key:
+
 ```
 eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
 To find your anon key:
+
 - Go to Supabase Dashboard
 - Settings → API
 - Copy "anon" key (under "Project API keys")
@@ -64,6 +70,7 @@ After adding the secrets, you can test it manually:
 ### 4. Verify It's Running
 
 The workflow runs automatically every hour. Check:
+
 - **Actions** tab to see execution history
 - Click any run to see logs
 - Look for "Cleanup completed successfully"
@@ -71,6 +78,7 @@ The workflow runs automatically every hour. Check:
 ## What It Does
 
 Every hour, the workflow:
+
 1. Marks rooms inactive after 24 hours of no activity
 2. Deletes rooms that have been inactive/ended for 7+ days
 3. Logs the results
@@ -78,16 +86,19 @@ Every hour, the workflow:
 ## Troubleshooting
 
 ### "Error: Cleanup function failed"
+
 - Check that the function is deployed: `supabase functions list`
 - Verify your secrets are correct
 - Check function logs in Supabase Dashboard
 
 ### Workflow not running
+
 - Check that the workflow file is in `.github/workflows/`
 - Verify the repository has Actions enabled (Settings → Actions)
 - Wait up to 1 hour for first scheduled run
 
 ### Manual trigger not working
+
 - Ensure you've pushed the workflow file to GitHub
 - Check that secrets are added correctly
 - Try running locally: `curl -X POST "YOUR_FUNCTION_URL" -H "Authorization: Bearer YOUR_ANON_KEY"`

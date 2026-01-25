@@ -1,14 +1,14 @@
 // Supabase Edge Function to cleanup old rooms
 // Deploy with: supabase functions deploy cleanup-rooms
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-Deno.serve(async (req) => {
+Deno.serve(async (_req: Request) => {
 	try {
-		const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-		const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+		const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+		const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
-		const supabase = createClient(supabaseUrl, supabaseKey);
+		const supabase = createClient(supabaseUrl, supabaseKey)
 
 		// Mark inactive rooms (no activity for 24+ hours)
 		const { data: markedInactive, error: markError } = await supabase
@@ -54,11 +54,12 @@ Deno.serve(async (req) => {
 				headers: { 'Content-Type': 'application/json' },
 				status: 200
 			}
-		);
-	} catch (error) {
-		return new Response(JSON.stringify({ error: error.message }), {
-			headers: { 'Content-Type': 'application/json' },
-			status: 500
-		});
-	}
-});
+	)
+} catch (error) {
+	const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+	return new Response(JSON.stringify({ error: errorMessage }), {
+		headers: { 'Content-Type': 'application/json' },
+		status: 500
+	})
+}
+})
