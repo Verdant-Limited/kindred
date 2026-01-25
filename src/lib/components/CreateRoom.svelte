@@ -2,6 +2,9 @@
 	import { fade } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 	import { supabase } from '$lib/config/supabaseClient';
+	import QRCode from 'qrcode';
+	import Toast from './Toast.svelte';
+
 	type Program = {
 		id: string;
 		title: string;
@@ -17,6 +20,11 @@
 	let username = '';
 	let isLoading = false;
 	let errorMessage = '';
+	let successMessage = '';
+	let createdRoomCode = '';
+	let qrCodeUrl = '';
+	let toastComponent: Toast;
+	let showQrModal = false;
 
 	function handleStart() {
 		showCreate = true;
@@ -74,13 +82,43 @@
 				throw new Error('No room ID returned from database');
 			}
 
-			handleClose();
-			await goto(`/lobby/${data.id}`);
+			// Show success message and QR code
+			createdRoomCode = data.id;
+			successMessage = `Room created! Code: ${data.id}`;
+			showQrModal = true;
+			toastComponent?.show(`✓ Room created! Code: ${data.id}`, 'success');
+
+			// Generate QR code
+			try {
+				qrCodeUrl = await QRCode.toDataURL(
+					`${window.location.origin}/lobby/${data.id}`,
+					{ width: 300 }
+				);
+			} catch {
+				// QR code generation failed, but continue anyway
+			}
+
+			// Auto-navigate after 2 seconds
+			setTimeout(() => {
+				handleClose();
+				goto(`/lobby/${data.id}`);
+			}, 2000);
 		} catch (error) {
 			errorMessage = error instanceof Error ? error.message : "Wasn't able to create the program.";
+			toastComponent?.show(errorMessage, 'error');
 		} finally {
 			isLoading = false;
 		}
+	}
+
+	function handleKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter' && !isLoading) {
+			handleCreate();
+		}
+	}
+
+	function closeQrModal() {
+		showQrModal = false;
 	}
 </script>
 
@@ -95,7 +133,7 @@
 		</p>
 		<button
 			type="button"
-			class="mt-11 cursor-pointer rounded-xl bg-black px-16 py-3 font-sans text-[14px] font-bold tracking-widest text-white shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-gray-700"
+			class="mt-11 cursor-pointer rounded-xl bg-black px-16 py-3 font-sans text-[14px] font-bold tracking-widest text-white shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 transition-all"
 			on:click={handleStart}>
 			START
 		</button>
@@ -117,7 +155,7 @@
 			<header class="flex justify-end">
 				<button
 					type="button"
-					class="text-2xl text-gray-500 hover:opacity-80"
+					class="text-2xl text-gray-500 hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-orange-400 rounded transition-all"
 					on:click={handleClose}>
 					×
 				</button>
@@ -136,7 +174,8 @@
 						type="text"
 						placeholder="Enter a title…"
 						bind:value={title}
-						class="mt-1 w-full rounded-md border-2 border-white bg-transparent px-3 py-2 placeholder-orange-200 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] focus:border-blue-400 focus:outline-none" />
+						on:keydown={handleKeydown}
+						class="mt-1 w-full rounded-md border-2 border-white bg-transparent px-3 py-2 placeholder-orange-200 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-orange-400 transition-all" />
 				</label>
 
 				<label class="flex flex-col">
@@ -145,7 +184,8 @@
 						rows="4"
 						placeholder="Describe the program…"
 						bind:value={description}
-						class="mt-1 w-full rounded-md border-2 border-white bg-transparent px-3 py-2 placeholder-orange-200 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] focus:border-blue-400 focus:outline-none"
+						on:keydown={handleKeydown}
+						class="mt-1 w-full rounded-md border-2 border-white bg-transparent px-3 py-2 placeholder-orange-200 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-orange-400 transition-all"
 					></textarea>
 				</label>
 
@@ -155,7 +195,8 @@
 						type="text"
 						placeholder="Enter your username…"
 						bind:value={username}
-						class="mt-1 w-full rounded-md border-2 border-white bg-transparent px-3 py-2 placeholder-orange-200 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] focus:border-blue-400 focus:outline-none" />
+						on:keydown={handleKeydown}
+						class="mt-1 w-full rounded-md border-2 border-white bg-transparent px-3 py-2 placeholder-orange-200 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-orange-400 transition-all" />
 				</label>
 			</div>
 
@@ -164,7 +205,7 @@
 					type="button"
 					on:click={handleCreate}
 					disabled={isLoading}
-					class="cursor-pointer rounded-full bg-[#ffa843] px-12 py-3 font-semibold text-white shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-[#e38b2d] disabled:opacity-50">
+					class="cursor-pointer rounded-full bg-[#ffa843] px-12 py-3 font-semibold text-white shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-[#e38b2d] disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-orange-600 focus:ring-offset-2 transition-all">
 					{#if isLoading}
 						Creating...
 					{:else}
@@ -175,6 +216,50 @@
 		</div>
 	</div>
 {/if}
+
+{#if showQrModal && qrCodeUrl}
+	<div class="fixed inset-0 z-50 flex items-center justify-center">
+		<button
+			type="button"
+			class="bg-opacity-25 bg-blur-sm absolute inset-0 backdrop-blur-sm"
+			aria-label="Close QR modal"
+			on:click={closeQrModal}></button>
+
+		<div
+			class="relative w-full max-w-[390px] rounded-2xl bg-white p-6 shadow-lg"
+			in:fade={{ duration: 200 }}
+			out:fade={{ duration: 150 }}>
+			<header class="flex justify-end">
+				<button
+					type="button"
+					class="text-2xl text-gray-500 hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-orange-400 rounded transition-all"
+					on:click={closeQrModal}>
+					×
+				</button>
+			</header>
+
+			<div class="flex flex-col items-center space-y-4">
+				<p class="text-center text-sm font-medium text-gray-700">Share this QR code or code with others:</p>
+				<img src={qrCodeUrl} alt="Room QR Code" class="rounded-lg shadow-md" />
+				<div class="flex items-center space-x-2 rounded-lg bg-gray-100 px-4 py-3">
+					<span class="font-mono font-bold text-lg text-gray-900">{createdRoomCode}</span>
+					<button
+						type="button"
+						on:click={() => {
+							navigator.clipboard.writeText(createdRoomCode);
+							toastComponent?.show('Code copied to clipboard!', 'success');
+						}}
+						class="ml-2 rounded-md bg-orange-400 px-3 py-1 text-xs font-semibold text-white hover:bg-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-600 transition-all">
+						Copy
+					</button>
+				</div>
+				<p class="text-xs text-gray-500">Redirecting to room in a moment...</p>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<Toast bind:this={toastComponent} />
 
 <style>
 	.fire {
