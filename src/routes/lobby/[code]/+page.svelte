@@ -124,6 +124,9 @@
 	// Subscribe to real-time queue changes
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	let queueSubscription: any;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let categoriesSubscription: any;
+	let categoriesRefreshInterval: ReturnType<typeof setInterval> | null = null;
 
 	// Search state
 	let searchResults: { id: number; title: string; type: 'song' | 'prayer'; rank: number }[] =
@@ -263,6 +266,25 @@
 					}
 				)
 				.subscribe();
+
+			// Set up real-time subscription for category changes
+			categoriesSubscription = supabase
+				.channel('categories_channel')
+				.on(
+					'postgres_changes',
+					{
+						event: '*',
+						schema: 'public',
+						table: 'categories'
+					},
+					async () => {
+						await loadCategories();
+					}
+				)
+				.subscribe();
+
+			// Poll as a fallback in case realtime is disabled
+			categoriesRefreshInterval = setInterval(loadCategories, 5000);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load data';
 		} finally {
@@ -274,6 +296,12 @@
 	onDestroy(() => {
 		if (queueSubscription) {
 			supabase.removeChannel(queueSubscription);
+		}
+		if (categoriesSubscription) {
+			supabase.removeChannel(categoriesSubscription);
+		}
+		if (categoriesRefreshInterval) {
+			clearInterval(categoriesRefreshInterval);
 		}
 	});
 
@@ -321,6 +349,31 @@
 			queue = await reconstructQueueItems(queueData || []);
 		} catch (e) {
 			console.error('Error reloading queue:', e);
+		}
+	}
+
+	// Function to reload categories from database
+	async function loadCategories() {
+		try {
+			console.log('🔄 Loading categories...');
+			const { data: categoriesData, error: categoriesError } = await supabase
+				.from('categories')
+				.select('id, name')
+				.order('id', { ascending: true }); // ID 1 first, then 2, 3, etc.
+
+			if (categoriesError) {
+				console.error('❌ Error reloading categories:', categoriesError);
+				return;
+			}
+
+			const oldCount = categories.length;
+			categories = categoriesData || [];
+			console.log(
+				`✅ Categories updated: ${categories.length} total (was ${oldCount})`,
+				categories
+			);
+		} catch (e) {
+			console.error('❌ Error reloading categories:', e);
 		}
 	}
 
@@ -500,6 +553,7 @@
 		selectedCategoryId = null;
 		selectedCategoryName = '';
 		searchQuery = '';
+		await loadCategories();
 		await tick();
 		searchInputEl?.focus();
 		searchInputEl?.select();
