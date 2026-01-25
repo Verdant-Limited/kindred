@@ -4,7 +4,7 @@
 </script>
 
 <!-- Responsive app shell with safe-area support -->
-<div class="min-h-[100dvh] w-full bg-stone-200">
+<div class="min-h-[100dvh] w-full bg-stone-200 transition-colors">
 	<div
 		class="mx-auto min-h-[100dvh] w-full max-w-[430px] overflow-hidden
                pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)]

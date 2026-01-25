@@ -4,7 +4,7 @@
 	import { slide } from 'svelte/transition';
 	// QR code lib will be dynamically imported on client only
 
-	export let data;
+	let { data } = $props();
 
 	interface BaseItem {
 		id: number;
@@ -67,23 +67,23 @@
 	}
 
 	// State management
-	let showSearch = false;
-	let showLyrics = false;
-	let searchQuery = '';
-	let songs: Song[] = [];
-	let prayers: Prayer[] = [];
-	let categories: Category[] = [];
-	let queue: QueueItem[] = [];
-	let lyrics = '';
-	let currentSong = '';
-	let currentAuthor: string = '';
-	let isLoading = false;
-	let error: ErrorType = null;
+	let showSearch = $state(false);
+	let showLyrics = $state(false);
+	let searchQuery = $state('');
+	let songs: Song[] = $state([]);
+	let prayers: Prayer[] = $state([]);
+	let categories: Category[] = $state([]);
+	let queue: QueueItem[] = $state([]);
+	let lyrics = $state('');
+	let currentSong = $state('');
+	let currentAuthor = $state('');
+	let isLoading = $state(false);
+	let error: ErrorType = $state(null);
 
 	// Share UI state
-	let showShare = false;
-	let qrSrc = '';
-	let shareUrl = '';
+	let showShare = $state(false);
+	let qrSrc = $state('');
+	let shareUrl = $state('');
 
 	async function openShare() {
 		try {
@@ -114,36 +114,37 @@
 	}
 
 	// New state for hierarchical navigation
-	let selectedCategoryId: number | null = null;
-	let currentView: 'categories' | 'items' = 'categories';
-	let selectedCategoryName = '';
+	let selectedCategoryId: number | null = $state(null);
+	let currentView: 'categories' | 'items' = $state('categories');
+	let selectedCategoryName = $state('');
 
 	// Add program code from the route
-	$: programCode = data.room.id; // using room id as the program code
+	const programCode = $derived(data.room.id); // using room id as the program code
 
 	// Subscribe to real-time queue changes
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	let queueSubscription: any;
 
 	// Search state
-	let searchResults: { id: number; title: string; type: 'song' | 'prayer'; rank: number }[] = [];
-	let searching = false;
-	let searchError: string | null = null;
-	let searchMode: 'categories' | 'results' = 'categories';
+	let searchResults: { id: number; title: string; type: 'song' | 'prayer'; rank: number }[] =
+		$state([]);
+	let searching = $state(false);
+	let searchError: string | null = $state(null);
+	let searchMode: 'categories' | 'results' = $state('categories');
 	let searchTimeout: ReturnType<typeof setTimeout> | null = null;
-	let searchInputEl: HTMLInputElement | null = null;
+	let searchInputEl: HTMLInputElement | null = $state(null);
 
 	// Success notification state
-	let showSuccessMessage = false;
+	let showSuccessMessage = $state(false);
 	let successMessageTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	// Drag state
 	let dragStartY = 0;
-	let dragDeltaY = 0;
-	let dragging = false;
+	let dragDeltaY = $state(0);
+	let dragging = $state(false);
 	let activePointerId: number | null = null;
-	let searchSheetEl: HTMLDivElement | null = null;
-	let dragHandleEl: HTMLDivElement | null = null;
+	let searchSheetEl: HTMLDivElement | null = $state(null);
+	let dragHandleEl: HTMLDivElement | null = $state(null);
 	const CLOSE_DRAG_PX = 120;
 
 	function handleDragStart(e: PointerEvent) {
@@ -505,20 +506,24 @@
 	}
 
 	// Reactive statements
-	$: filteredCategories = filterCategories(categories, searchQuery);
-	$: categoryItems = selectedCategoryId
-		? [...songs, ...prayers].filter((item) => item.category_id === selectedCategoryId)
-		: [];
-	$: filteredCategoryItems = filterItems(categoryItems, searchQuery);
+	const filteredCategories = $derived(filterCategories(categories, searchQuery));
+	const categoryItems = $derived(
+		selectedCategoryId
+			? [...songs, ...prayers].filter((item) => item.category_id === selectedCategoryId)
+			: []
+	);
+	const filteredCategoryItems = $derived(filterItems(categoryItems, searchQuery));
 
-	$: if (showLyrics && queue.length > 0) {
-		const firstItem = queue[0];
-		if (currentSong !== firstItem.title) {
-			lyrics = getContent(firstItem);
-			currentSong = firstItem.title;
-			currentAuthor = 'lyrics' in firstItem ? '' : ((firstItem as Prayer).author ?? '');
+	$effect(() => {
+		if (showLyrics && queue.length > 0) {
+			const firstItem = queue[0];
+			if (currentSong !== firstItem.title) {
+				lyrics = getContent(firstItem);
+				currentSong = firstItem.title;
+				currentAuthor = 'lyrics' in firstItem ? '' : ((firstItem as Prayer).author ?? '');
+			}
 		}
-	}
+	});
 
 	// Debounced full‑text search (Supabase RPC)
 	async function runSearch(query: string) {
@@ -546,13 +551,15 @@
 	}
 
 	// Watch searchQuery when modal open
-	$: if (showSearch) {
-		if (searchTimeout) clearTimeout(searchTimeout);
-		// Only run full‑text RPC when explicitly in 'results' mode.
-		if (searchMode === 'results') {
-			searchTimeout = setTimeout(() => runSearch(searchQuery), 250);
+	$effect(() => {
+		if (showSearch) {
+			if (searchTimeout) clearTimeout(searchTimeout);
+			// Only run full‑text RPC when explicitly in 'results' mode.
+			if (searchMode === 'results') {
+				searchTimeout = setTimeout(() => runSearch(searchQuery), 250);
+			}
 		}
-	}
+	});
 
 	// Increment stats (view/use)
 	async function incrementStat(item: QueueItem, action: 'view' | 'use') {
@@ -592,12 +599,14 @@
 <!-- Header -->
 <div class="flex items-center justify-between px-3 py-4">
 	<h1 class="pt-6 pl-6 font-sans text-xl font-semibold tracking-widest text-black">KINDLED</h1>
-	<button
-		class="material-symbols-outlined share cursor-pointer pt-6 pr-6"
-		aria-label="Share"
-		on:click={openShare}>
-		share
-	</button>
+	<div class="flex items-center gap-2 pt-6 pr-6">
+		<button
+			class="material-symbols-outlined share cursor-pointer"
+			aria-label="Share"
+			onclick={openShare}>
+			share
+		</button>
+	</div>
 </div>
 
 <!-- Success Notification -->
@@ -628,7 +637,7 @@
 <div class="mt-2 flex flex-col items-center justify-center">
 	<div class="relative w-80">
 		<input
-			on:click={openSearch}
+			onclick={openSearch}
 			type="text"
 			maxlength="20"
 			placeholder="Search for Prayer or Song..."
@@ -638,15 +647,16 @@
 			local_fire_department
 		</span>
 	</div>
-	<h2 class="mt-20 text-center font-sans text-[30px] leading-tight font-bold tracking-wide">
+	<h2
+		class="mt-20 text-center font-sans text-[30px] leading-tight font-bold tracking-wide text-black">
 		{data.room.title}<br />
 	</h2>
-	<p class="mt-30 font-sans font-semibold">LYRICS</p>
+	<p class="mt-30 font-sans font-semibold text-black">LYRICS</p>
 	<div class="mt-4 flex items-center justify-center">
 		<button
 			class="material-symbols-outlined arrow flex h-7 w-12 cursor-pointer items-center justify-center rounded-[10px] bg-white pb-8 text-center text-orange-400 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-gray-200"
 			disabled={queue.length === 0}
-			on:click={() => {
+			onclick={() => {
 				if (queue.length > 0) {
 					const firstItem = queue[0];
 					lyrics = getContent(firstItem);
@@ -662,15 +672,15 @@
 <!-- Queue Section -->
 <section class="mt-10 px-4 py-4 md:px-20">
 	<div class="flex items-center justify-between">
-		<h2 class="font-sans text-[10px] font-bold tracking-wide">QUEUED</h2>
+		<h2 class="font-sans text-[10px] font-bold tracking-wide text-black">QUEUED</h2>
 		<span
-			class="mr-39 inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-white px-1.5 text-center font-semibold">
+			class="mr-39 inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-white px-1.5 text-center font-semibold text-black">
 			{queue.length}
 		</span>
 		<button
-			on:click={openSearch}
+			onclick={openSearch}
 			class="material-symbols-outlined add mb-1 h-7 w-10 cursor-pointer rounded-[20px]
-                   bg-gray-300 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-white"
+	                   bg-gray-300 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-white"
 			aria-label="Add song">
 			add
 		</button>
@@ -688,7 +698,7 @@
 						{/if}
 					</div>
 					<button
-						on:click={() => queueOperations.removeFromQueue(i)}
+						onclick={() => queueOperations.removeFromQueue(i)}
 						class="close material-symbols-outlined text-[#ff7f50] hover:text-orange-600"
 						aria-label="Remove from queue">
 						close
@@ -708,7 +718,7 @@
 		<div
 			class="relative w-full max-w-sm rounded-[20px] bg-white p-4 shadow-[0_4px_12px_rgba(0,0,0,0.25)]">
 			<button
-				on:click={() => (showShare = false)}
+				onclick={() => (showShare = false)}
 				class="material-symbols-outlined absolute top-2 right-2 cursor-pointer text-[#ff7f50] hover:text-orange-600">
 				close
 			</button>
@@ -735,7 +745,7 @@
 							{programCode}
 						</span>
 						<button
-							on:click={copyCode}
+							onclick={copyCode}
 							class="material-symbols-outlined flex h-8 w-8 items-center justify-center rounded-full bg-stone-200 text-black hover:bg-stone-300"
 							title="Copy code">
 							content_copy
@@ -747,7 +757,7 @@
 					<div class="mt-3 flex gap-2">
 						<button
 							class="rounded-[12px] bg-black px-3 py-2 font-sans text-xs font-bold tracking-widest text-white hover:bg-gray-700"
-							on:click={() => {
+							onclick={() => {
 								if (navigator.share) {
 									navigator.share({ title: 'Join my room', url: shareUrl }).catch(() => {});
 								}
@@ -784,10 +794,10 @@
 			<div
 				bind:this={dragHandleEl}
 				class="drag-handle-area"
-				on:pointerdown={handleDragStart}
-				on:pointermove={handleDragMove}
-				on:pointerup={handleDragEnd}
-				on:pointercancel={handleDragEnd}
+				onpointerdown={handleDragStart}
+				onpointermove={handleDragMove}
+				onpointerup={handleDragEnd}
+				onpointercancel={handleDragEnd}
 				title="Drag down to close">
 				<div class="drag-handle-bar"></div>
 			</div>
@@ -795,8 +805,8 @@
 			<!-- Header with close button -->
 			<div class="mt-6 flex flex-col items-center justify-center px-4">
 				<button
-					class="material-symbols-outlined slide cursor-pointer text-white"
-					on:click={() => (showSearch = false)}>remove</button>
+					class="material-symbols-outlined slide cursor-pointer text-black"
+					onclick={() => (showSearch = false)}>remove</button>
 
 				<!-- Search Input -->
 				<div class="relative mt-4 w-full max-w-80">
@@ -818,7 +828,7 @@
 			<div class="mt-6 mb-5 flex items-center justify-center px-4">
 				{#if currentView === 'items'}
 					<button
-						on:click={goBackToCategories}
+						onclick={goBackToCategories}
 						class="material-symbols-outlined mr-2 cursor-pointer text-black hover:text-gray-600">
 						arrow_back
 					</button>
@@ -833,16 +843,16 @@
 			<div class="mb-2 flex items-center justify-center gap-2">
 				<button
 					class="rounded-full px-3 py-1 font-sans text-sm {searchMode === 'categories'
-						? 'bg-white'
-						: 'bg-stone-200'}"
-					on:click={() => (searchMode = 'categories')}>
+						? 'bg-white text-black'
+						: 'bg-stone-200 text-gray-700'}"
+					onclick={() => (searchMode = 'categories')}>
 					Browse
 				</button>
 				<button
 					class="rounded-full px-3 py-1 font-sans text-sm {searchMode === 'results'
-						? 'bg-white'
-						: 'bg-stone-200'}"
-					on:click={() => {
+						? 'bg-white text-black'
+						: 'bg-stone-200 text-gray-700'}"
+					onclick={() => {
 						searchMode = 'results';
 						if (searchQuery.trim().length >= 2) runSearch(searchQuery);
 					}}>
@@ -869,7 +879,7 @@
 							<button
 								type="button"
 								class="flex w-full items-center justify-between rounded-[20px] bg-white px-6 py-3 font-sans shadow-[0_4px_4px_rgba(0,0,0,0.25)] hover:bg-stone-200"
-								on:click={() => {
+								onclick={() => {
 									const item = (r.type === 'song' ? songs : prayers).find((x) => x.id === r.id);
 									if (item) fetchContent(item);
 								}}>
@@ -895,7 +905,7 @@
 									<button
 										type="button"
 										class="flex h-[60px] w-full max-w-[360px] items-center justify-between rounded-[20px] bg-white px-6 font-sans font-medium shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200"
-										on:click={() => selectCategory(category)}>
+										onclick={() => selectCategory(category)}>
 										<span class="font-semibold">{category.name}</span>
 										<span class="material-symbols-outlined text-gray-400"> chevron_right </span>
 									</button>
@@ -922,13 +932,13 @@
 									<!-- Action buttons (right) -->
 									<div class="col-start-2 col-end-3 ml-3 flex items-center space-x-2">
 										<button
-											on:click={() => fetchContent(item)}
+											onclick={() => fetchContent(item)}
 											class="material-symbols-outlined eye cursor-pointer rounded-full bg-gray-100 p-2 text-black hover:bg-gray-200"
 											title="View content">
 											visibility
 										</button>
 										<button
-											on:click={() => queueOperations.addToQueue(item)}
+											onclick={() => queueOperations.addToQueue(item)}
 											class="material-symbols-outlined plus cursor-pointer rounded-full bg-[#ff7f50] p-2 text-white hover:bg-orange-600"
 											title="Add to queue">
 											add
@@ -941,7 +951,7 @@
 						<div class="mt-8 text-center">
 							<p class="text-sm text-gray-600">No songs or prayers found in this category.</p>
 							<button
-								on:click={goBackToCategories}
+								onclick={goBackToCategories}
 								class="mt-4 rounded-lg bg-gray-500 px-4 py-2 font-sans text-white hover:bg-gray-600">
 								Back to Categories
 							</button>
@@ -961,7 +971,7 @@
 		<div class="h-[90%] w-full max-w-md rounded-t-[30px] bg-white">
 			<div class="flex flex-col items-center justify-center">
 				<button
-					on:click={() => (showLyrics = false)}
+					onclick={() => (showLyrics = false)}
 					class="material-symbols-outlined slide cursor-pointer text-[#ff7f50]">remove</button>
 			</div>
 			<h1 class="flex justify-center text-center font-sans font-bold text-[#ff7f50]">
