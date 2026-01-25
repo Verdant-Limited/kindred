@@ -3,9 +3,19 @@
 	import JoinRoom from '$lib/components/JoinRoom.svelte';
 
 	let mode: 'create' | 'join' = 'create';
+	let createRoomRef: CreateRoom;
+	let joinRoomRef: JoinRoom;
 
 	function handleRoomToggle(newMode: 'create' | 'join') {
 		mode = newMode;
+		// Auto-focus the input in the respective component after transition
+		setTimeout(() => {
+			if (newMode === 'create') {
+				createRoomRef?.focusTitle();
+			} else {
+				joinRoomRef?.focusCodeInput();
+			}
+		}, 100);
 	}
 </script>
 
@@ -14,9 +24,9 @@
 </h1>
 
 {#if mode === 'create'}
-	<CreateRoom />
+	<CreateRoom bind:this={createRoomRef} />
 {:else if mode === 'join'}
-	<JoinRoom />
+	<JoinRoom bind:this={joinRoomRef} />
 {/if}
 
 <div class="mt-30 flex flex-col items-center justify-end">
