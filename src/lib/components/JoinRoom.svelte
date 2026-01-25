@@ -57,16 +57,40 @@
 			const { data: programs, error } = await supabase
 				.from('programs')
 				.select('*')
-				.eq('id', code) // Query programs table by id column as string
-				.eq('status', 'active'); // Only find active programs
+				.eq('id', code);
 
 			if (error) {
 				throw new Error('Failed to check program: ' + error.message);
 			}
 
 			if (!programs || programs.length === 0) {
-				throw new Error('Program not found. Please check the code and try again.');
+				throw new Error('Room not found. Please check the code and try again.');
 			}
+
+			const room = programs[0];
+
+			// Check room status and provide helpful messages
+			if (room.status === 'ended') {
+				throw new Error(
+					'This room has been ended by the creator. Please create a new room or join a different one.'
+				);
+			}
+
+			if (room.status === 'inactive') {
+				throw new Error(
+					'This room has been inactive for over 24 hours. Please create a new room.'
+				);
+			}
+
+			if (room.status !== 'active') {
+				throw new Error('This room is not available. Please try a different code.');
+			}
+
+			// Update last_activity when joining
+			await supabase
+				.from('programs')
+				.update({ last_activity: new Date().toISOString() })
+				.eq('id', code);
 
 			// Save room code for session persistence
 			localStorage.setItem('currentRoomCode', code);

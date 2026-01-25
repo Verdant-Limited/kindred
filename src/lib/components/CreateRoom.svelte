@@ -92,7 +92,8 @@
 				.insert({
 					id: roomCode,
 					...newProgram,
-					created_at: new Date().toISOString()
+					created_at: new Date().toISOString(),
+					last_activity: new Date().toISOString()
 				})
 				.select('id')
 				.single();
