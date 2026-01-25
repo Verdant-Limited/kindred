@@ -5,14 +5,18 @@ This directory contains the automated room cleanup system for Kindred.
 ## Components
 
 ### 1. Database Migration (`migrations/20260124_add_activity_tracking.sql`)
+
 Adds:
+
 - `last_activity` timestamp - tracks when room was last updated
 - `ended_at` timestamp - tracks when room was ended/marked inactive
 - Database functions for cleanup
 - Trigger to auto-update `last_activity` on changes
 
 ### 2. Edge Function (`functions/cleanup-rooms/index.ts`)
+
 Runs cleanup logic:
+
 - Marks rooms inactive after 24 hours of no activity
 - Deletes rooms after 7 days of being inactive/ended
 
@@ -57,6 +61,7 @@ SELECT cron.schedule(
 ```
 
 **OR** use a third-party cron service (cron-job.org, GitHub Actions, etc.) to call:
+
 ```
 POST https://YOUR_PROJECT.supabase.co/functions/v1/cleanup-rooms
 Authorization: Bearer YOUR_ANON_KEY
@@ -69,9 +74,9 @@ The migration adds `last_activity` which auto-updates on changes. Optionally, yo
 ```typescript
 // Optional: Manually touch last_activity when users join/interact
 await supabase
-  .from('programs')
-  .update({ last_activity: new Date().toISOString() })
-  .eq('id', roomCode)
+	.from('programs')
+	.update({ last_activity: new Date().toISOString() })
+	.eq('id', roomCode);
 ```
 
 ## Cleanup Logic

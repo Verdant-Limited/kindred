@@ -54,10 +54,7 @@
 			isLoading = true;
 
 			// Query the program using the 'id' column (text type)
-			const { data: programs, error } = await supabase
-				.from('programs')
-				.select('*')
-				.eq('id', code);
+			const { data: programs, error } = await supabase.from('programs').select('*').eq('id', code);
 
 			if (error) {
 				throw new Error('Failed to check program: ' + error.message);
@@ -77,9 +74,7 @@
 			}
 
 			if (room.status === 'inactive') {
-				throw new Error(
-					'This room has been inactive for over 24 hours. Please create a new room.'
-				);
+				throw new Error('This room has been inactive for over 24 hours. Please create a new room.');
 			}
 
 			if (room.status !== 'active') {
@@ -135,7 +130,7 @@
 			placeholder="Enter 4 digit code..."
 			on:blur={validateCode}
 			class="text-gray h-20 w-72 rounded-xl bg-stone-200 px-4 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)]
-                   drop-shadow-xl transition-all outline-none placeholder:text-gray-700 focus:ring-2 focus:ring-orange-400 focus:ring-offset-2
+                   outline-none drop-shadow-xl transition-all placeholder:text-gray-700 focus:ring-2 focus:ring-orange-400 focus:ring-offset-2
                    {codeError ? 'border-2 border-red-500' : ''}"
 			on:keypress={(e) => e.key === 'Enter' && handleJoin()} />
 	</div>
@@ -144,8 +139,8 @@
 		class="mt-11 cursor-pointer justify-center rounded-xl bg-black px-16 py-3
                font-sans text-[14px] font-bold tracking-widest text-white
                shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] transition-all
-               hover:bg-gray-700 focus:ring-2
-               focus:ring-orange-400 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+               hover:bg-gray-700 focus:outline-none
+               focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 		on:click={handleJoin}
 		disabled={isLoading}
 		type="button">

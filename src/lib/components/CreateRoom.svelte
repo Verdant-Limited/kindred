@@ -156,7 +156,7 @@
 		</p>
 		<button
 			type="button"
-			class="mt-11 cursor-pointer rounded-xl bg-black px-16 py-3 font-sans text-[14px] font-bold tracking-widest text-white shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] transition-all hover:bg-gray-700 focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 focus:outline-none"
+			class="mt-11 cursor-pointer rounded-xl bg-black px-16 py-3 font-sans text-[14px] font-bold tracking-widest text-white shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] transition-all hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2"
 			on:click={handleStart}>
 			START
 		</button>
@@ -167,7 +167,7 @@
 	<div class="fixed inset-0 z-50 flex items-center justify-center">
 		<button
 			type="button"
-			class="bg-opacity-25 bg-blur-sm absolute inset-0 backdrop-blur-sm"
+			class="bg-blur-sm absolute inset-0 bg-opacity-25 backdrop-blur-sm"
 			aria-label="Close modal"
 			on:click={handleClose}></button>
 
@@ -178,7 +178,7 @@
 			<header class="flex justify-end">
 				<button
 					type="button"
-					class="rounded text-2xl text-gray-500 transition-all hover:opacity-80 focus:ring-2 focus:ring-orange-400 focus:outline-none"
+					class="rounded text-2xl text-gray-500 transition-all hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-orange-400"
 					on:click={handleClose}>
 					×
 				</button>
@@ -200,7 +200,7 @@
 						bind:this={titleInputRef}
 						on:keydown={handleKeydown}
 						on:blur={validateTitle}
-						class="mt-1 w-full rounded-md border-2 border-white bg-transparent px-3 py-2 placeholder-orange-200 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] transition-all focus:border-blue-400 focus:ring-2 focus:ring-orange-400 focus:outline-none" />
+						class="mt-1 w-full rounded-md border-2 border-white bg-transparent px-3 py-2 placeholder-orange-200 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] transition-all focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-orange-400" />
 					{#if titleError}
 						<span class="mt-1 text-xs text-red-500">{titleError}</span>
 					{/if}
@@ -213,7 +213,7 @@
 						placeholder="Describe the program…"
 						bind:value={description}
 						on:keydown={handleKeydown}
-						class="mt-1 w-full rounded-md border-2 border-white bg-transparent px-3 py-2 placeholder-orange-200 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] transition-all focus:border-blue-400 focus:ring-2 focus:ring-orange-400 focus:outline-none"
+						class="mt-1 w-full rounded-md border-2 border-white bg-transparent px-3 py-2 placeholder-orange-200 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] transition-all focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-orange-400"
 					></textarea>
 				</label>
 
@@ -225,7 +225,7 @@
 						bind:value={username}
 						on:keydown={handleKeydown}
 						on:blur={validateUsername}
-						class="mt-1 w-full rounded-md border-2 border-white bg-transparent px-3 py-2 placeholder-orange-200 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] transition-all focus:border-blue-400 focus:ring-2 focus:ring-orange-400 focus:outline-none" />
+						class="mt-1 w-full rounded-md border-2 border-white bg-transparent px-3 py-2 placeholder-orange-200 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] transition-all focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-orange-400" />
 					{#if usernameError}
 						<span class="mt-1 text-xs text-red-500">{usernameError}</span>
 					{/if}
@@ -237,7 +237,7 @@
 					type="button"
 					on:click={handleCreate}
 					disabled={isLoading}
-					class="cursor-pointer rounded-full bg-[#ffa843] px-12 py-3 font-semibold text-white shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] transition-all hover:bg-[#e38b2d] focus:ring-2 focus:ring-orange-600 focus:ring-offset-2 focus:outline-none disabled:opacity-50">
+					class="cursor-pointer rounded-full bg-[#ffa843] px-12 py-3 font-semibold text-white shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] transition-all hover:bg-[#e38b2d] focus:outline-none focus:ring-2 focus:ring-orange-600 focus:ring-offset-2 disabled:opacity-50">
 					{#if isLoading}
 						Creating...
 					{:else}
@@ -253,7 +253,7 @@
 	<div class="fixed inset-0 z-50 flex items-center justify-center">
 		<button
 			type="button"
-			class="bg-opacity-25 bg-blur-sm absolute inset-0 backdrop-blur-sm"
+			class="bg-blur-sm absolute inset-0 bg-opacity-25 backdrop-blur-sm"
 			aria-label="Close QR modal"
 			on:click={closeQrModal}></button>
 
@@ -264,7 +264,7 @@
 			<header class="flex justify-end">
 				<button
 					type="button"
-					class="rounded text-2xl text-gray-500 transition-all hover:opacity-80 focus:ring-2 focus:ring-orange-400 focus:outline-none"
+					class="rounded text-2xl text-gray-500 transition-all hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-orange-400"
 					on:click={closeQrModal}>
 					×
 				</button>
@@ -283,7 +283,7 @@
 							navigator.clipboard.writeText(createdRoomCode);
 							toastComponent?.show('Code copied to clipboard!', 'success');
 						}}
-						class="ml-2 rounded-md bg-orange-400 px-3 py-1 text-xs font-semibold text-white transition-all hover:bg-orange-500 focus:ring-2 focus:ring-orange-600 focus:outline-none">
+						class="ml-2 rounded-md bg-orange-400 px-3 py-1 text-xs font-semibold text-white transition-all hover:bg-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-600">
 						Copy
 					</button>
 				</div>
