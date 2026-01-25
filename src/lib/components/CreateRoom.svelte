@@ -20,11 +20,19 @@
 	let username = '';
 	let isLoading = false;
 	let errorMessage = '';
+	let titleError = '';
+	let usernameError = '';
 	let successMessage = '';
 	let createdRoomCode = '';
 	let qrCodeUrl = '';
 	let toastComponent: Toast;
 	let showQrModal = false;
+	let titleInputRef: HTMLInputElement;
+
+	// Load saved username from localStorage
+	if (typeof window !== 'undefined') {
+		username = localStorage.getItem('kindredUsername') || '';
+	}
 
 	function handleStart() {
 		showCreate = true;
@@ -38,21 +46,36 @@
 	function resetForm() {
 		title = '';
 		description = '';
-		username = '';
 		errorMessage = '';
+		titleError = '';
+		usernameError = '';
+	}
+
+	function validateTitle() {
+		titleError = !title.trim() ? 'Please add a title' : '';
+	}
+
+	function validateUsername() {
+		usernameError = !username.trim() ? 'Please enter a username' : '';
+	}
+
+	function focusTitle() {
+		if (showCreate && titleInputRef) {
+			titleInputRef.focus();
+		}
 	}
 
 	async function handleCreate() {
 		try {
 			errorMessage = '';
-			if (!title.trim()) {
-				errorMessage = 'Please add a title';
+			validateTitle();
+			validateUsername();
+			if (!title.trim() || !username.trim()) {
 				return;
 			}
-			if (!username.trim()) {
-				errorMessage = 'Please enter a username';
-				return;
-			}
+
+			// Save username to localStorage
+			localStorage.setItem('kindredUsername', username.trim());
 
 			isLoading = true;
 			const roomCode = Math.floor(1000 + Math.random() * 9000).toString();
@@ -90,10 +113,9 @@
 
 			// Generate QR code
 			try {
-				qrCodeUrl = await QRCode.toDataURL(
-					`${window.location.origin}/lobby/${data.id}`,
-					{ width: 300 }
-				);
+				qrCodeUrl = await QRCode.toDataURL(`${window.location.origin}/lobby/${data.id}`, {
+					width: 300
+				});
 			} catch {
 				// QR code generation failed, but continue anyway
 			}
@@ -133,7 +155,7 @@
 		</p>
 		<button
 			type="button"
-			class="mt-11 cursor-pointer rounded-xl bg-black px-16 py-3 font-sans text-[14px] font-bold tracking-widest text-white shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 transition-all"
+			class="mt-11 cursor-pointer rounded-xl bg-black px-16 py-3 font-sans text-[14px] font-bold tracking-widest text-white shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] transition-all hover:bg-gray-700 focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 focus:outline-none"
 			on:click={handleStart}>
 			START
 		</button>
@@ -155,7 +177,7 @@
 			<header class="flex justify-end">
 				<button
 					type="button"
-					class="text-2xl text-gray-500 hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-orange-400 rounded transition-all"
+					class="rounded text-2xl text-gray-500 transition-all hover:opacity-80 focus:ring-2 focus:ring-orange-400 focus:outline-none"
 					on:click={handleClose}>
 					×
 				</button>
@@ -174,8 +196,13 @@
 						type="text"
 						placeholder="Enter a title…"
 						bind:value={title}
+						bind:this={titleInputRef}
 						on:keydown={handleKeydown}
-						class="mt-1 w-full rounded-md border-2 border-white bg-transparent px-3 py-2 placeholder-orange-200 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-orange-400 transition-all" />
+						on:blur={validateTitle}
+						class="mt-1 w-full rounded-md border-2 border-white bg-transparent px-3 py-2 placeholder-orange-200 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] transition-all focus:border-blue-400 focus:ring-2 focus:ring-orange-400 focus:outline-none" />
+					{#if titleError}
+						<span class="mt-1 text-xs text-red-500">{titleError}</span>
+					{/if}
 				</label>
 
 				<label class="flex flex-col">
@@ -185,7 +212,7 @@
 						placeholder="Describe the program…"
 						bind:value={description}
 						on:keydown={handleKeydown}
-						class="mt-1 w-full rounded-md border-2 border-white bg-transparent px-3 py-2 placeholder-orange-200 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-orange-400 transition-all"
+						class="mt-1 w-full rounded-md border-2 border-white bg-transparent px-3 py-2 placeholder-orange-200 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] transition-all focus:border-blue-400 focus:ring-2 focus:ring-orange-400 focus:outline-none"
 					></textarea>
 				</label>
 
@@ -196,7 +223,11 @@
 						placeholder="Enter your username…"
 						bind:value={username}
 						on:keydown={handleKeydown}
-						class="mt-1 w-full rounded-md border-2 border-white bg-transparent px-3 py-2 placeholder-orange-200 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-orange-400 transition-all" />
+						on:blur={validateUsername}
+						class="mt-1 w-full rounded-md border-2 border-white bg-transparent px-3 py-2 placeholder-orange-200 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] transition-all focus:border-blue-400 focus:ring-2 focus:ring-orange-400 focus:outline-none" />
+					{#if usernameError}
+						<span class="mt-1 text-xs text-red-500">{usernameError}</span>
+					{/if}
 				</label>
 			</div>
 
@@ -205,7 +236,7 @@
 					type="button"
 					on:click={handleCreate}
 					disabled={isLoading}
-					class="cursor-pointer rounded-full bg-[#ffa843] px-12 py-3 font-semibold text-white shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-[#e38b2d] disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-orange-600 focus:ring-offset-2 transition-all">
+					class="cursor-pointer rounded-full bg-[#ffa843] px-12 py-3 font-semibold text-white shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] transition-all hover:bg-[#e38b2d] focus:ring-2 focus:ring-orange-600 focus:ring-offset-2 focus:outline-none disabled:opacity-50">
 					{#if isLoading}
 						Creating...
 					{:else}
@@ -232,24 +263,26 @@
 			<header class="flex justify-end">
 				<button
 					type="button"
-					class="text-2xl text-gray-500 hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-orange-400 rounded transition-all"
+					class="rounded text-2xl text-gray-500 transition-all hover:opacity-80 focus:ring-2 focus:ring-orange-400 focus:outline-none"
 					on:click={closeQrModal}>
 					×
 				</button>
 			</header>
 
 			<div class="flex flex-col items-center space-y-4">
-				<p class="text-center text-sm font-medium text-gray-700">Share this QR code or code with others:</p>
+				<p class="text-center text-sm font-medium text-gray-700">
+					Share this QR code or code with others:
+				</p>
 				<img src={qrCodeUrl} alt="Room QR Code" class="rounded-lg shadow-md" />
 				<div class="flex items-center space-x-2 rounded-lg bg-gray-100 px-4 py-3">
-					<span class="font-mono font-bold text-lg text-gray-900">{createdRoomCode}</span>
+					<span class="font-mono text-lg font-bold text-gray-900">{createdRoomCode}</span>
 					<button
 						type="button"
 						on:click={() => {
 							navigator.clipboard.writeText(createdRoomCode);
 							toastComponent?.show('Code copied to clipboard!', 'success');
 						}}
-						class="ml-2 rounded-md bg-orange-400 px-3 py-1 text-xs font-semibold text-white hover:bg-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-600 transition-all">
+						class="ml-2 rounded-md bg-orange-400 px-3 py-1 text-xs font-semibold text-white transition-all hover:bg-orange-500 focus:ring-2 focus:ring-orange-600 focus:outline-none">
 						Copy
 					</button>
 				</div>

@@ -7,24 +7,47 @@
 	let code = '';
 	let isLoading = false;
 	let errorMessage = '';
-	let toastComponent: Toast;
+	let codeError = '';
+	let toastComponent: Toast | undefined;
+	let codeInputRef: HTMLInputElement;
+
+	// Check for active session on mount
+	if (typeof window !== 'undefined') {
+		const savedRoomCode = localStorage.getItem('currentRoomCode');
+		const roomCodeTimestamp = localStorage.getItem('roomCodeTimestamp');
+		const isWithinSession = roomCodeTimestamp && Date.now() - parseInt(roomCodeTimestamp) < 3600000; // 1 hour
+
+		if (savedRoomCode && isWithinSession) {
+			// Auto-rejoin the room
+			goto(`/lobby/${savedRoomCode}`);
+		}
+	}
+
+	function focusCodeInput() {
+		if (codeInputRef) {
+			codeInputRef.focus();
+		}
+	}
+
+	function validateCode() {
+		if (!code.trim()) {
+			codeError = 'Please enter a room code';
+		} else if (code.length !== 4) {
+			codeError = 'Room code must be 4 digits';
+		} else if (!/^\d+$/.test(code)) {
+			codeError = 'Room code must contain only numbers';
+		} else {
+			codeError = '';
+		}
+	}
 
 	async function handleJoin() {
 		try {
 			errorMessage = '';
+			codeError = '';
+			validateCode();
 
-			if (!code.trim()) {
-				errorMessage = 'Please enter a room code';
-				return;
-			}
-
-			if (code.length !== 4) {
-				errorMessage = 'Room code must be 4 digits';
-				return;
-			}
-
-			if (!/^\d+$/.test(code)) {
-				errorMessage = 'Room code must contain only numbers';
+			if (codeError) {
 				return;
 			}
 
@@ -44,6 +67,10 @@
 			if (!programs || programs.length === 0) {
 				throw new Error('Program not found. Please check the code and try again.');
 			}
+
+			// Save room code for session persistence
+			localStorage.setItem('currentRoomCode', code);
+			localStorage.setItem('roomCodeTimestamp', Date.now().toString());
 
 			// Navigate to the room using the code
 			toastComponent?.show('✓ Joining room...', 'success');
@@ -72,24 +99,29 @@
 		{#if errorMessage}
 			<p class="text-sm text-red-500" transition:fade>{errorMessage}</p>
 		{/if}
+		{#if codeError}
+			<p class="text-sm text-red-500" transition:fade>{codeError}</p>
+		{/if}
 		<input
 			type="text"
 			inputmode="numeric"
 			bind:value={code}
+			bind:this={codeInputRef}
 			maxlength="4"
 			placeholder="Enter 4 digit code..."
+			on:blur={validateCode}
 			class="text-gray h-20 w-72 rounded-xl bg-stone-200 px-4 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)]
-                   drop-shadow-xl outline-none placeholder:text-gray-700 focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 transition-all
-                   {errorMessage ? 'border-2 border-red-500' : ''}"
+                   drop-shadow-xl transition-all outline-none placeholder:text-gray-700 focus:ring-2 focus:ring-orange-400 focus:ring-offset-2
+                   {codeError ? 'border-2 border-red-500' : ''}"
 			on:keypress={(e) => e.key === 'Enter' && handleJoin()} />
 	</div>
 
 	<button
 		class="mt-11 cursor-pointer justify-center rounded-xl bg-black px-16 py-3
                font-sans text-[14px] font-bold tracking-widest text-white
-               shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-gray-700
-               disabled:cursor-not-allowed disabled:opacity-50
-               focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 transition-all"
+               shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] transition-all
+               hover:bg-gray-700 focus:ring-2
+               focus:ring-orange-400 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 		on:click={handleJoin}
 		disabled={isLoading}
 		type="button">

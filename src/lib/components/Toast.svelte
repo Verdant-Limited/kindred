@@ -8,7 +8,7 @@
 
 	let timeoutId: ReturnType<typeof setTimeout>;
 
-	function show(msg: string, toastType: 'success' | 'error' | 'info' = 'info') {
+	export function show(msg: string, toastType: 'success' | 'error' | 'info' = 'info') {
 		message = msg;
 		type = toastType;
 		visible = true;
@@ -40,7 +40,9 @@
 
 {#if visible}
 	<div
-		class="fixed bottom-6 left-6 right-6 z-50 rounded-lg border-2 px-4 py-3 {bgColor[type]} {textColor[type]} {borderColor[type]} shadow-lg"
+		class="fixed right-6 bottom-6 left-6 z-50 rounded-lg border-2 px-4 py-3 {bgColor[
+			type
+		]} {textColor[type]} {borderColor[type]} shadow-lg"
 		transition:fade={{ duration: 200 }}>
 		{message}
 	</div>
