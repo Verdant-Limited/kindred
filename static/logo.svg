@@ -1,0 +1,26 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="95" fill="#ffffff" stroke="#ff7f50" stroke-width="2"/>
+  
+  <!-- Flame shape (stylized) -->
+  <g id="flame">
+    <!-- Main flame body -->
+    <path d="M 100 40 Q 85 70 85 90 Q 85 120 100 135 Q 115 120 115 90 Q 115 70 100 40 Z" fill="#ff7f50" opacity="0.9"/>
+    
+    <!-- Inner flame highlight -->
+    <path d="M 100 50 Q 92 70 92 85 Q 92 110 100 122 Q 108 110 108 85 Q 108 70 100 50 Z" fill="#ffa366" opacity="0.8"/>
+    
+    <!-- Brightest center -->
+    <ellipse cx="100" cy="75" rx="6" ry="10" fill="#ffe6cc" opacity="0.9"/>
+  </g>
+  
+  <!-- Text arc (optional, for app name) -->
+  <defs>
+    <path id="textArc" d="M 30,100 A 70,70 0 0,1 170,100" fill="none"/>
+  </defs>
+  
+  <!-- Decorative dots around flame -->
+  <circle cx="100" cy="30" r="4" fill="#ff7f50" opacity="0.6"/>
+  <circle cx="145" cy="50" r="3" fill="#ff7f50" opacity="0.4"/>
+  <circle cx="55" cy="50" r="3" fill="#ff7f50" opacity="0.4"/>
+</svg>

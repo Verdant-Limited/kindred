@@ -342,11 +342,14 @@
 						table: 'program_queue',
 						filter: `program_code=eq.${programCode}`
 					},
-					async () => {
+					async (payload) => {
+						console.log('🔔 Queue change detected:', payload);
 						await loadQueue();
 					}
 				)
-				.subscribe();
+				.subscribe((status) => {
+					console.log(`📡 Queue subscription status: ${status}`);
+				});
 
 			// Set up real-time subscription for category changes
 			categoriesSubscription = supabase
@@ -731,7 +734,7 @@
 
 <!-- Header -->
 <div class="flex items-center justify-between px-3 py-4">
-	<h1 class="pt-6 pl-6 font-sans text-xl font-semibold tracking-widest text-black">KINDLED</h1>
+	<h1 class="pt-6 pl-6 font-sans text-xl font-semibold tracking-widest text-black">KINDLE</h1>
 	<div class="flex items-center gap-2 pt-6 pr-6">
 		<button
 			class="material-symbols-outlined share cursor-pointer"
