@@ -339,8 +339,8 @@
 					{
 						event: '*',
 						schema: 'public',
-						table: 'program_queue',
-						filter: `program_code=eq.${programCode}`
+						table: 'program_queue'
+						// Temporarily removed filter to test
 					},
 					async (payload) => {
 						console.log('🔔 Queue change detected:', payload);
