@@ -80,8 +80,6 @@
 	let currentAuthor = $state('');
 	let isLoading = $state(false);
 	let error: ErrorType = $state(null);
-	// When true, keep lyrics modal synced to the first queue item (arrow button). When false, respect manual view selection (e.g., prayers).
-	let syncLyricsToQueue = $state(false);
 
 	// Share UI state
 	let showShare = $state(false);
@@ -131,8 +129,13 @@
 	let categoriesSubscription: any;
 	let categoriesRefreshInterval: ReturnType<typeof setInterval> | null = null;
 
-	// Search/browse state
-	let contentTab: 'songs' | 'prayers' = $state('songs');
+	// Search state
+	let searchResults: { id: number; title: string; type: 'song' | 'prayer'; rank: number }[] =
+		$state([]);
+	let searching = $state(false);
+	let searchError: string | null = $state(null);
+	let searchMode: 'categories' | 'results' = $state('categories');
+	let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 	let searchInputEl: HTMLInputElement | null = $state(null);
 
 	// Success notification state
@@ -300,7 +303,6 @@
 						.from('program_queue')
 						.select('*')
 						.eq('program_code', programCode)
-						.eq('item_type', 'song')
 						.order('position', { ascending: true })
 				]
 			);
@@ -397,14 +399,16 @@
 		const reconstructed: QueueItem[] = [];
 
 		for (const record of queueRecords) {
-			if (record.item_type !== 'song') {
-				continue;
+			let item: QueueItem | null = null;
+
+			if (record.item_type === 'song') {
+				item = songs.find((s) => s.id === record.item_id) || null;
+			} else if (record.item_type === 'prayer') {
+				item = prayers.find((p) => p.id === record.item_id) || null;
 			}
 
-			const song = songs.find((s) => s.id === record.item_id) || null;
-
-			if (song) {
-				reconstructed.push(song);
+			if (item) {
+				reconstructed.push(item);
 			}
 		}
 
@@ -419,7 +423,6 @@
 				.from('program_queue')
 				.select('*')
 				.eq('program_code', programCode)
-				.eq('item_type', 'song')
 				.order('position', { ascending: true });
 
 			if (queueError) {
@@ -461,10 +464,6 @@
 	// Updated queue operations to use database
 	const queueOperations: QueueOperations<QueueItem> = {
 		addToQueue: async (item) => {
-			if (!('lyrics' in item)) {
-				showError('Prayers are not queueable. Use prayer prompts instead.');
-				return;
-			}
 			try {
 				// Check if item is already in queue
 				const { data: existingItems, error: checkError } = await supabase
@@ -472,7 +471,7 @@
 					.select('id')
 					.eq('program_code', programCode)
 					.eq('item_id', item.id)
-					.eq('item_type', 'song');
+					.eq('item_type', 'lyrics' in item ? 'song' : 'prayer');
 
 				if (checkError) {
 					console.error('Error checking existing queue items:', checkError);
@@ -511,7 +510,7 @@
 				const { error: insertError } = await supabase.from('program_queue').insert({
 					program_code: programCode,
 					item_id: item.id,
-					item_type: 'song',
+					item_type: 'lyrics' in item ? 'song' : 'prayer',
 					title: item.title,
 					position: nextPosition
 				});
@@ -575,6 +574,17 @@
 					return;
 				}
 
+				// Update positions for remaining items on server
+				const { error: updateError } = await supabase.rpc('update_queue_positions', {
+					program_code_param: programCode,
+					removed_position: index
+				});
+
+				if (updateError) {
+					console.error('Error updating positions:', updateError);
+					showError('Failed to update queue order.');
+				}
+
 				// Clear lyrics if we removed the currently displayed item
 				if (itemToRemove.title === currentSong) {
 					lyrics = '';
@@ -617,10 +627,6 @@
 	}
 
 	async function fetchContent(item: QueueItem) {
-		// Close search sheet so only the content modal is visible
-		showSearch = false;
-		syncLyricsToQueue = false; // manual view shouldn't be overridden by queue sync
-
 		if ('lyrics' in item && (item.chords == null || item.media == null)) {
 			await fetchSongComplete(item as Song);
 			currentAuthor = '';
@@ -649,21 +655,12 @@
 
 	async function openSearch() {
 		showSearch = true;
-		// For songs tab, show items directly without category selection
-		if (contentTab === 'songs') {
-			currentView = 'items';
-			selectedCategoryId = null;
-		} else {
-			// For prayers, show categories first
-			currentView = 'categories';
-			selectedCategoryId = null;
-			if (!categories || categories.length === 0) {
-				// kick off load without blocking UI to avoid toggle delay
-				void loadCategories();
-			}
-		}
+		searchMode = 'categories';
+		currentView = 'categories';
+		selectedCategoryId = null;
 		selectedCategoryName = '';
 		searchQuery = '';
+		await loadCategories();
 		await tick();
 		searchInputEl?.focus();
 		searchInputEl?.select();
@@ -671,25 +668,56 @@
 
 	// Reactive statements
 	const filteredCategories = $derived(filterCategories(categories, searchQuery));
-	const categorySongs = $derived(
-		selectedCategoryId ? songs.filter((item) => item.category_id === selectedCategoryId) : []
+	const categoryItems = $derived(
+		selectedCategoryId
+			? [...songs, ...prayers].filter((item) => item.category_id === selectedCategoryId)
+			: []
 	);
-	const categoryPrayers = $derived(
-		selectedCategoryId ? prayers.filter((item) => item.category_id === selectedCategoryId) : []
-	);
-	const filteredCategorySongs = $derived(filterItems(categorySongs, searchQuery));
-	const filteredCategoryPrayers = $derived(filterItems(categoryPrayers, searchQuery));
-	// Show all songs without category filtering
-	const filteredAllSongs = $derived(filterItems(songs, searchQuery));
-	const filteredAllPrayers = $derived(filterItems(prayers, searchQuery));
+	const filteredCategoryItems = $derived(filterItems(categoryItems, searchQuery));
 
 	$effect(() => {
-		if (showLyrics && syncLyricsToQueue && queue.length > 0) {
+		if (showLyrics && queue.length > 0) {
 			const firstItem = queue[0];
 			if (currentSong !== firstItem.title) {
 				lyrics = getContent(firstItem);
 				currentSong = firstItem.title;
 				currentAuthor = 'lyrics' in firstItem ? '' : ((firstItem as Prayer).author ?? '');
+			}
+		}
+	});
+
+	// Debounced full‑text search (Supabase RPC)
+	async function runSearch(query: string) {
+		if (query.trim().length < 2) {
+			searchResults = [];
+			searchError = null;
+			return;
+		}
+		searching = true;
+		searchError = null;
+		try {
+			const { data, error } = await supabase.rpc('search_content', {
+				search_query: query,
+				content_type: 'all',
+				limit_count: 40
+			});
+			if (error) throw error;
+			searchResults = data ?? [];
+			// Do not auto-switch modes; stay in whatever the user chose.
+		} catch (e) {
+			searchError = e instanceof Error ? e.message : 'Search failed';
+		} finally {
+			searching = false;
+		}
+	}
+
+	// Watch searchQuery when modal open
+	$effect(() => {
+		if (showSearch) {
+			if (searchTimeout) clearTimeout(searchTimeout);
+			// Only run full‑text RPC when explicitly in 'results' mode.
+			if (searchMode === 'results') {
+				searchTimeout = setTimeout(() => runSearch(searchQuery), 250);
 			}
 		}
 	});
@@ -776,7 +804,7 @@
 				</button>
 				<button
 					onclick={executeConfirmation}
-					class="flex-1 rounded-lg bg-[#ff7f50] px-4 py-2 font-sans font-semibold text-white hover:bg-[#e6632d]">
+					class="flex-1 rounded-lg bg-red-500 px-4 py-2 font-sans font-semibold text-white hover:bg-red-600">
 					Remove
 				</button>
 			</div>
@@ -824,7 +852,6 @@
 			onclick={() => {
 				if (queue.length > 0) {
 					const firstItem = queue[0];
-					syncLyricsToQueue = true; // enable auto-sync when viewing from queue
 					lyrics = getContent(firstItem);
 					currentSong = firstItem.title;
 					showLyrics = true;
@@ -961,7 +988,7 @@
 		out:slide|local={{ duration: 200 }}>
 		<div
 			bind:this={searchSheetEl}
-			class="h-[90%] w-full max-w-md overflow-y-auto rounded-t-[30px] bg-stone-300"
+			class="h-[90%] w-full max-w-md rounded-t-[30px] bg-stone-300"
 			style="transform: translateY({dragDeltaY}px); transition: {dragging
 				? 'none'
 				: 'transform 200ms ease'};">
@@ -990,11 +1017,7 @@
 						bind:value={searchQuery}
 						type="text"
 						maxlength="20"
-						placeholder={currentView === 'categories'
-							? 'Search categories...'
-							: contentTab === 'songs'
-								? 'Search songs...'
-								: 'Search prayers...'}
+						placeholder={currentView === 'categories' ? 'Search categories...' : 'Search items...'}
 						class="h-[60px] w-full rounded-[20px] bg-white pl-10 font-sans text-gray-400 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200" />
 					<span
 						class="material-symbols-outlined flame absolute top-1/2 left-1 -translate-y-1/2 transform text-[#ff7f50]">
@@ -1005,7 +1028,7 @@
 
 			<!-- Navigation Header -->
 			<div class="mt-6 mb-5 flex items-center justify-center px-4">
-				{#if currentView === 'items' && selectedCategoryId !== null}
+				{#if currentView === 'items'}
 					<button
 						onclick={goBackToCategories}
 						class="material-symbols-outlined mr-2 cursor-pointer text-black hover:text-gray-600">
@@ -1014,88 +1037,100 @@
 				{/if}
 				<h2
 					class="text-center font-sans text-[18px] font-medium tracking-wide text-black underline">
-					{currentView === 'categories'
-						? 'CATEGORIES'
-						: selectedCategoryId !== null
-							? selectedCategoryName.toUpperCase()
-							: contentTab === 'songs'
-								? 'SONGS'
-								: 'PRAYERS'}
+					{currentView === 'categories' ? 'CATEGORIES' : selectedCategoryName.toUpperCase()}
 				</h2>
 			</div>
 
-			<!-- Mode toggle: Songs vs Prayers (hide when drilled into a category's items) -->
-			{#if currentView !== 'items' || selectedCategoryId === null}
-				<div class="mb-2 flex items-center justify-center gap-2">
-					<button
-						class="rounded-full px-3 py-1 font-sans text-sm {contentTab === 'songs'
-							? 'bg-white text-black'
-							: 'bg-stone-200 text-gray-700'}"
-						onclick={() => {
-							contentTab = 'songs';
-							// For songs, show items directly without category selection
-							if (currentView === 'categories') {
-								currentView = 'items';
-								selectedCategoryId = null;
-								searchQuery = '';
-							}
-						}}>
-						Songs
-					</button>
-					<button
-						class="rounded-full px-3 py-1 font-sans text-sm {contentTab === 'prayers'
-							? 'bg-white text-black'
-							: 'bg-stone-200 text-gray-700'}"
-						onclick={() => {
-							contentTab = 'prayers';
-							// For prayers, show categories first
-							if (currentView === 'items' && selectedCategoryId === null) {
-								currentView = 'categories';
-								searchQuery = '';
-							}
-						}}>
-						Prayers
-					</button>
-				</div>
-			{/if}
+			<!-- Mode toggle -->
+			<div class="mb-2 flex items-center justify-center gap-2">
+				<button
+					class="rounded-full px-3 py-1 font-sans text-sm {searchMode === 'categories'
+						? 'bg-white text-black'
+						: 'bg-stone-200 text-gray-700'}"
+					onclick={() => (searchMode = 'categories')}>
+					Browse
+				</button>
+				<button
+					class="rounded-full px-3 py-1 font-sans text-sm {searchMode === 'results'
+						? 'bg-white text-black'
+						: 'bg-stone-200 text-gray-700'}"
+					onclick={() => {
+						searchMode = 'results';
+						if (searchQuery.trim().length >= 2) runSearch(searchQuery);
+					}}>
+					Global results
+				</button>
+			</div>
 
-			<!-- Browse categories/items -->
-			{#if currentView === 'categories'}
-				<!-- Categories List -->
-				{#if categories.length === 0}
-					<div class="mt-20 flex flex-col items-center justify-center px-4">
-						<p class="text-center font-sans text-gray-600">No categories available yet.</p>
-						<p class="mt-2 text-center font-sans text-sm text-gray-500">
-							Check back soon for content!
-						</p>
-					</div>
-				{:else if filteredCategories.length > 0}
-					<ul
-						class="flex w-full flex-col items-center justify-start space-y-3 overflow-y-auto px-4"
-						style="max-height: calc(100vh - 280px); scroll-behavior: smooth; touch-action: pan-y; padding-bottom: 24px;">
-						{#each filteredCategories as category (category.id)}
-							<li class="flex w-full items-center justify-center">
-								<button
-									type="button"
-									class="flex h-[60px] w-full max-w-[360px] items-center justify-between rounded-[20px] bg-white px-6 font-sans font-medium shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200"
-									onclick={() => selectCategory(category)}>
-									<span class="font-semibold">{category.name}</span>
-									<span class="material-symbols-outlined text-gray-400"> chevron_right </span>
-								</button>
-							</li>
-						{/each}
-					</ul>
-				{:else}
-					<p class="mt-4 text-center text-sm text-gray-600">No matching categories found.</p>
-				{/if}
-			{:else if currentView === 'items'}
-				<!-- Items for Selected Category or All Items -->
-				{#if contentTab === 'songs'}
-					{#if selectedCategoryId === null ? filteredAllSongs.length > 0 : filteredCategorySongs.length > 0}
+			<!-- Switch between categories/items and full-text results -->
+			{#if searchMode === 'results'}
+				<div class="mt-4 px-4">
+					{#if searching}
+						<p class="text-center text-sm text-gray-600">Searching…</p>
+					{:else if searchError}
+						<p class="text-center text-sm text-red-500">Search error: {searchError}</p>
+					{:else if searchResults.length === 0 && searchQuery.trim().length >= 2}
+						<p class="text-center text-sm text-gray-600">No matches found.</p>
+					{/if}
+				</div>
+				<ul
+					class="flex flex-col items-center space-y-3 overflow-y-auto px-4 pb-6"
+					style="max-height: calc(100% - 230px);">
+					{#each searchResults as r (`${r.type}-${r.id}`)}
+						<li class="w-full max-w-[360px]">
+							<button
+								type="button"
+								class="flex w-full items-center justify-between rounded-[20px] bg-white px-6 py-3 font-sans shadow-[0_4px_4px_rgba(0,0,0,0.25)] hover:bg-stone-200"
+								onclick={() => {
+									const item = (r.type === 'song' ? songs : prayers).find((x) => x.id === r.id);
+									if (item) fetchContent(item);
+								}}>
+								<span class="text-left">
+									<span class="block font-semibold">{r.title}</span>
+									<span class="block text-xs text-gray-500 capitalize">{r.type}</span>
+								</span>
+								<span class="text-xs text-gray-400">Rank {r.rank.toFixed(2)}</span>
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{:else}
+				<!-- existing categories/items UI unchanged -->
+				{#if currentView === 'categories'}
+					<!-- Categories List -->
+					{#if categories.length === 0}
+						<div class="mt-20 flex flex-col items-center justify-center px-4">
+							<p class="text-center font-sans text-gray-600">No categories available yet.</p>
+							<p class="mt-2 text-center font-sans text-sm text-gray-500">
+								Check back soon for content!
+							</p>
+						</div>
+					{:else if filteredCategories.length > 0}
 						<ul
 							class="flex w-full flex-col items-center justify-start space-y-3 overflow-y-auto px-4"
-							style="max-height: calc(100vh - 280px); scroll-behavior: smooth; touch-action: pan-y; padding-bottom: 24px;">
-							{#each selectedCategoryId === null ? filteredAllSongs : filteredCategorySongs as item (item.id)}
+							style="max-height: calc(100% - 250px); scroll-behavior: smooth; touch-action: pan-y; padding-bottom: 24px;">
+							{#each filteredCategories as category (category.id)}
+								<li class="flex w-full items-center justify-center">
+									<button
+										type="button"
+										class="flex h-[60px] w-full max-w-[360px] items-center justify-between rounded-[20px] bg-white px-6 font-sans font-medium shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200"
+										onclick={() => selectCategory(category)}>
+										<span class="font-semibold">{category.name}</span>
+										<span class="material-symbols-outlined text-gray-400"> chevron_right </span>
+									</button>
+								</li>
+							{/each}
+						</ul>
+					{:else}
+						<p class="mt-4 text-center text-sm text-gray-600">No matching categories found.</p>
+					{/if}
+				{:else if currentView === 'items'}
+					<!-- Songs and Prayers List for Selected Category -->
+					{#if filteredCategoryItems.length > 0}
+						<ul
+							class="flex w-full flex-col items-center justify-center space-y-3 overflow-y-auto px-4"
+							style="max-height: calc(100% - 250px); scroll-behavior: smooth; touch-action: pan-y; padding-bottom: 24px;">
+							{#each filteredCategoryItems as item (item.id)}
 								<li
 									class="grid h-[70px] w-full max-w-[360px] grid-cols-[1fr_auto] items-center rounded-[20px] bg-white px-6 font-sans shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200">
 									<!-- Centered title -->
@@ -1107,13 +1142,13 @@
 									<div class="col-start-2 col-end-3 ml-3 flex items-center space-x-2">
 										<button
 											onclick={() => fetchContent(item)}
-											class="action-btn eye material-symbols-outlined cursor-pointer text-black"
+											class="material-symbols-outlined eye cursor-pointer rounded-full bg-gray-100 p-2 text-black hover:bg-gray-200"
 											title="View content">
 											visibility
 										</button>
 										<button
 											onclick={() => queueOperations.addToQueue(item)}
-											class="action-btn plus material-symbols-outlined cursor-pointer text-white"
+											class="material-symbols-outlined plus cursor-pointer rounded-full bg-[#ff7f50] p-2 text-white hover:bg-orange-600"
 											title="Add to queue">
 											add
 										</button>
@@ -1123,53 +1158,14 @@
 						</ul>
 					{:else}
 						<div class="mt-8 text-center">
-							<p class="text-sm text-gray-600">
-								{selectedCategoryId === null
-									? 'No songs available.'
-									: 'No songs found in this category.'}
-							</p>
-							{#if selectedCategoryId !== null}
-								<button
-									onclick={goBackToCategories}
-									class="mt-4 rounded-lg bg-gray-500 px-4 py-2 font-sans text-white hover:bg-gray-600">
-									Back to Categories
-								</button>
-							{/if}
+							<p class="text-sm text-gray-600">No songs or prayers found in this category.</p>
+							<button
+								onclick={goBackToCategories}
+								class="mt-4 rounded-lg bg-gray-500 px-4 py-2 font-sans text-white hover:bg-gray-600">
+								Back to Categories
+							</button>
 						</div>
 					{/if}
-				{:else if filteredCategoryPrayers.length > 0}
-					<ul
-						class="flex w-full flex-col items-center justify-start space-y-3 overflow-y-auto px-4"
-						style="max-height: calc(100vh - 280px); scroll-behavior: smooth; touch-action: pan-y; padding-bottom: 24px;">
-						{#each filteredCategoryPrayers as item (item.id)}
-							<li
-								class="grid h-[70px] w-full max-w-[360px] grid-cols-[1fr_auto] items-center rounded-[20px] bg-white px-6 font-sans shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200">
-								<!-- Centered title -->
-								<div class="col-start-1 col-end-2 flex w-full justify-center">
-									<span class="block max-w-[220px] truncate text-center font-semibold"
-										>{item.title}</span>
-								</div>
-								<!-- Action buttons (right) -->
-								<div class="col-start-2 col-end-3 ml-3 flex items-center space-x-2">
-									<button
-										onclick={() => fetchContent(item)}
-										class="action-btn eye material-symbols-outlined cursor-pointer text-black"
-										title="View content">
-										visibility
-									</button>
-								</div>
-							</li>
-						{/each}
-					</ul>
-				{:else}
-					<div class="mt-8 text-center">
-						<p class="text-sm text-gray-600">No prayers found in this category.</p>
-						<button
-							onclick={goBackToCategories}
-							class="mt-4 rounded-lg bg-gray-500 px-4 py-2 font-sans text-white hover:bg-gray-600">
-							Back to Categories
-						</button>
-					</div>
 				{/if}
 			{/if}
 		</div>
@@ -1188,13 +1184,13 @@
 					class="material-symbols-outlined slide cursor-pointer text-[#ff7f50]">remove</button>
 			</div>
 			<h1 class="flex justify-center text-center font-sans font-bold text-[#ff7f50]">
-				{contentTab === 'songs' ? 'Lyrics' : 'Prayer'}
+				{'lyrics' in (queue.find((item) => item.title === currentSong) ?? {}) ||
+				lyrics.includes('\n\n')
+					? 'Lyrics'
+					: 'Prayer'}
 			</h1>
 			<div
-				class="overflow-y-auto p-4 font-sans text-lg font-medium whitespace-pre-line text-[#ff7f50] {contentTab ===
-				'prayers'
-					? 'prayer-content text-center'
-					: 'song-content text-left'}"
+				class="overflow-y-auto p-4 text-center font-sans text-sm font-medium whitespace-pre-line text-[#ff7f50]"
 				style="max-height: 70%; width: 90%; margin: auto;">
 				{lyrics}
 				{#if currentAuthor}
@@ -1269,43 +1265,6 @@
 	}
 	.close {
 		font-size: var(--icon-size-md);
-	}
-
-	/* Uniform action buttons for list items */
-	.action-btn {
-		width: 36px;
-		height: 36px;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		border-radius: 9999px;
-		padding: 0;
-		border: 1px solid transparent;
-		box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
-		transition:
-			transform 160ms ease,
-			box-shadow 160ms ease,
-			background-color 160ms ease,
-			border-color 160ms ease;
-	}
-	.action-btn.eye {
-		background: #ffffff;
-		border-color: #e5e7eb;
-		color: #ff7f50;
-	}
-	.action-btn.eye:hover {
-		background: #f8fafc;
-		box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
-		transform: translateY(-1px);
-	}
-	.action-btn.plus {
-		background: linear-gradient(135deg, #ff945f, #ff7f50);
-		color: white;
-	}
-	.action-btn.plus:hover {
-		background: linear-gradient(135deg, #ff7f50, #e6632d);
-		box-shadow: 0 4px 12px rgba(255, 127, 80, 0.28);
-		transform: translateY(-1px);
 	}
 
 	/* Fix scrollbar styling */
@@ -1405,34 +1364,6 @@
 
 	.author-line-modal.after-content {
 		display: block;
-	}
-
-	/* Song content styling */
-	.song-content {
-		line-height: 1.8;
-		letter-spacing: 0.5px;
-		word-spacing: 0.1em;
-		max-width: 65ch;
-		margin-left: auto;
-		margin-right: auto;
-		padding-bottom: 1.5rem;
-	}
-
-	/* Prayer content styling */
-	.prayer-content {
-		line-height: 1.9;
-		letter-spacing: 0.5px;
-		word-spacing: 0.1em;
-		max-width: 65ch;
-		margin-left: auto;
-		margin-right: auto;
-		padding-bottom: 1.5rem;
-	}
-
-	.prayer-content::first-letter {
-		font-size: 3.5em;
-		font-weight: bold;
-		line-height: 1;
 	}
 
 	/* (Optional) Slight fade-in */
