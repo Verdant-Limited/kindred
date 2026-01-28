@@ -1100,14 +1100,14 @@
 							style="max-height: calc(100vh - 280px); scroll-behavior: smooth; touch-action: pan-y; padding-bottom: 24px;">
 							{#each selectedCategoryId === null ? filteredAllSongs : filteredCategorySongs as item (item.id)}
 								<li
-									class="grid h-[70px] w-full max-w-[360px] grid-cols-[1fr_auto] items-center rounded-[20px] bg-white px-6 font-sans shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200">
+									class="flex h-16 w-full max-w-sm items-center justify-between gap-3 rounded-[20px] bg-white px-4 font-sans shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200 sm:px-6">
 									<!-- Centered title -->
-									<div class="col-start-1 col-end-2 flex w-full justify-center">
-										<span class="block max-w-[220px] truncate text-center font-semibold"
+									<div class="flex min-w-0 flex-1 justify-center">
+										<span class="block max-w-xs truncate text-center font-semibold"
 											>{item.title}</span>
 									</div>
 									<!-- Action buttons (right) -->
-									<div class="col-start-2 col-end-3 ml-3 flex items-center space-x-2">
+									<div class="flex flex-shrink-0 items-center gap-2">
 										<button
 											onclick={() => fetchContent(item)}
 											class="action-btn eye material-symbols-outlined cursor-pointer text-black"
@@ -1146,14 +1146,14 @@
 						style="max-height: calc(100vh - 280px); scroll-behavior: smooth; touch-action: pan-y; padding-bottom: 24px;">
 						{#each filteredCategoryPrayers as item (item.id)}
 							<li
-								class="grid h-[70px] w-full max-w-[360px] grid-cols-[1fr_auto] items-center rounded-[20px] bg-white px-6 font-sans shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200">
+								class="flex h-16 w-full max-w-sm items-center justify-between gap-3 rounded-[20px] bg-white px-4 font-sans shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200 sm:px-6">
 								<!-- Centered title -->
-								<div class="col-start-1 col-end-2 flex w-full justify-center">
-									<span class="block max-w-[220px] truncate text-center font-semibold"
+								<div class="flex min-w-0 flex-1 justify-center">
+									<span class="block max-w-xs truncate text-center font-semibold"
 										>{item.title}</span>
 								</div>
 								<!-- Action buttons (right) -->
-								<div class="col-start-2 col-end-3 ml-3 flex items-center space-x-2">
+								<div class="flex flex-shrink-0 items-center gap-2">
 									<button
 										onclick={() => fetchContent(item)}
 										class="action-btn eye material-symbols-outlined cursor-pointer text-black"
