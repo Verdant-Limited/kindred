@@ -80,8 +80,6 @@
 	let currentAuthor = $state('');
 	let isLoading = $state(false);
 	let error: ErrorType = $state(null);
-	// When true, keep lyrics modal synced to the first queue item (arrow button). When false, respect manual view selection (e.g., prayers).
-	let syncLyricsToQueue = $state(false);
 
 	// Share UI state
 	let showShare = $state(false);
@@ -619,7 +617,6 @@
 	async function fetchContent(item: QueueItem) {
 		// Close search sheet so only the content modal is visible
 		showSearch = false;
-		syncLyricsToQueue = false; // manual view shouldn't be overridden by queue sync
 
 		if ('lyrics' in item && (item.chords == null || item.media == null)) {
 			await fetchSongComplete(item as Song);
@@ -649,21 +646,11 @@
 
 	async function openSearch() {
 		showSearch = true;
-		// For songs tab, show items directly without category selection
-		if (contentTab === 'songs') {
-			currentView = 'items';
-			selectedCategoryId = null;
-		} else {
-			// For prayers, show categories first
-			currentView = 'categories';
-			selectedCategoryId = null;
-			if (!categories || categories.length === 0) {
-				// kick off load without blocking UI to avoid toggle delay
-				void loadCategories();
-			}
-		}
+		currentView = 'categories';
+		selectedCategoryId = null;
 		selectedCategoryName = '';
 		searchQuery = '';
+		await loadCategories();
 		await tick();
 		searchInputEl?.focus();
 		searchInputEl?.select();
@@ -679,12 +666,9 @@
 	);
 	const filteredCategorySongs = $derived(filterItems(categorySongs, searchQuery));
 	const filteredCategoryPrayers = $derived(filterItems(categoryPrayers, searchQuery));
-	// Show all songs without category filtering
-	const filteredAllSongs = $derived(filterItems(songs, searchQuery));
-	const filteredAllPrayers = $derived(filterItems(prayers, searchQuery));
 
 	$effect(() => {
-		if (showLyrics && syncLyricsToQueue && queue.length > 0) {
+		if (showLyrics && queue.length > 0) {
 			const firstItem = queue[0];
 			if (currentSong !== firstItem.title) {
 				lyrics = getContent(firstItem);
@@ -776,7 +760,7 @@
 				</button>
 				<button
 					onclick={executeConfirmation}
-					class="flex-1 rounded-lg bg-[#ff7f50] px-4 py-2 font-sans font-semibold text-white hover:bg-[#e6632d]">
+					class="flex-1 rounded-lg bg-red-500 px-4 py-2 font-sans font-semibold text-white hover:bg-red-600">
 					Remove
 				</button>
 			</div>
@@ -824,7 +808,6 @@
 			onclick={() => {
 				if (queue.length > 0) {
 					const firstItem = queue[0];
-					syncLyricsToQueue = true; // enable auto-sync when viewing from queue
 					lyrics = getContent(firstItem);
 					currentSong = firstItem.title;
 					showLyrics = true;
@@ -961,7 +944,7 @@
 		out:slide|local={{ duration: 200 }}>
 		<div
 			bind:this={searchSheetEl}
-			class="h-[90%] w-full max-w-md overflow-y-auto rounded-t-[30px] bg-stone-300"
+			class="h-[90%] w-full max-w-md rounded-t-[30px] bg-stone-300"
 			style="transform: translateY({dragDeltaY}px); transition: {dragging
 				? 'none'
 				: 'transform 200ms ease'};">
@@ -1005,7 +988,7 @@
 
 			<!-- Navigation Header -->
 			<div class="mt-6 mb-5 flex items-center justify-center px-4">
-				{#if currentView === 'items' && selectedCategoryId !== null}
+				{#if currentView === 'items'}
 					<button
 						onclick={goBackToCategories}
 						class="material-symbols-outlined mr-2 cursor-pointer text-black hover:text-gray-600">
@@ -1014,52 +997,10 @@
 				{/if}
 				<h2
 					class="text-center font-sans text-[18px] font-medium tracking-wide text-black underline">
-					{currentView === 'categories'
-						? 'CATEGORIES'
-						: selectedCategoryId !== null
-							? selectedCategoryName.toUpperCase()
-							: contentTab === 'songs'
-								? 'SONGS'
-								: 'PRAYERS'}
+					{currentView === 'categories' ? 'CATEGORIES' : selectedCategoryName.toUpperCase()}
 				</h2>
 			</div>
 
-			<!-- Mode toggle: Songs vs Prayers (hide when drilled into a category's items) -->
-			{#if currentView !== 'items' || selectedCategoryId === null}
-				<div class="mb-2 flex items-center justify-center gap-2">
-					<button
-						class="rounded-full px-3 py-1 font-sans text-sm {contentTab === 'songs'
-							? 'bg-white text-black'
-							: 'bg-stone-200 text-gray-700'}"
-						onclick={() => {
-							contentTab = 'songs';
-							// For songs, show items directly without category selection
-							if (currentView === 'categories') {
-								currentView = 'items';
-								selectedCategoryId = null;
-								searchQuery = '';
-							}
-						}}>
-						Songs
-					</button>
-					<button
-						class="rounded-full px-3 py-1 font-sans text-sm {contentTab === 'prayers'
-							? 'bg-white text-black'
-							: 'bg-stone-200 text-gray-700'}"
-						onclick={() => {
-							contentTab = 'prayers';
-							// For prayers, show categories first
-							if (currentView === 'items' && selectedCategoryId === null) {
-								currentView = 'categories';
-								searchQuery = '';
-							}
-						}}>
-						Prayers
-					</button>
-				</div>
-			{/if}
-
-			<!-- Browse categories/items -->
 			{#if currentView === 'categories'}
 				<!-- Categories List -->
 				{#if categories.length === 0}
@@ -1072,7 +1013,7 @@
 				{:else if filteredCategories.length > 0}
 					<ul
 						class="flex w-full flex-col items-center justify-start space-y-3 overflow-y-auto px-4"
-						style="max-height: calc(100vh - 280px); scroll-behavior: smooth; touch-action: pan-y; padding-bottom: 24px;">
+						style="max-height: calc(100% - 250px); scroll-behavior: smooth; touch-action: pan-y; padding-bottom: 24px;">
 						{#each filteredCategories as category (category.id)}
 							<li class="flex w-full items-center justify-center">
 								<button
@@ -1089,13 +1030,13 @@
 					<p class="mt-4 text-center text-sm text-gray-600">No matching categories found.</p>
 				{/if}
 			{:else if currentView === 'items'}
-				<!-- Items for Selected Category or All Items -->
+				<!-- Items for Selected Category -->
 				{#if contentTab === 'songs'}
-					{#if selectedCategoryId === null ? filteredAllSongs.length > 0 : filteredCategorySongs.length > 0}
+					{#if filteredCategorySongs.length > 0}
 						<ul
-							class="flex w-full flex-col items-center justify-start space-y-3 overflow-y-auto px-4"
-							style="max-height: calc(100vh - 280px); scroll-behavior: smooth; touch-action: pan-y; padding-bottom: 24px;">
-							{#each selectedCategoryId === null ? filteredAllSongs : filteredCategorySongs as item (item.id)}
+							class="flex w-full flex-col items-center justify-center space-y-3 overflow-y-auto px-4"
+							style="max-height: calc(100% - 250px); scroll-behavior: smooth; touch-action: pan-y; padding-bottom: 24px;">
+							{#each filteredCategorySongs as item (item.id)}
 								<li
 									class="grid h-[70px] w-full max-w-[360px] grid-cols-[1fr_auto] items-center rounded-[20px] bg-white px-6 font-sans shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200">
 									<!-- Centered title -->
@@ -1107,13 +1048,13 @@
 									<div class="col-start-2 col-end-3 ml-3 flex items-center space-x-2">
 										<button
 											onclick={() => fetchContent(item)}
-											class="action-btn eye material-symbols-outlined cursor-pointer text-black"
+											class="material-symbols-outlined eye cursor-pointer rounded-full bg-gray-100 p-2 text-black hover:bg-gray-200"
 											title="View content">
 											visibility
 										</button>
 										<button
 											onclick={() => queueOperations.addToQueue(item)}
-											class="action-btn plus material-symbols-outlined cursor-pointer text-white"
+											class="material-symbols-outlined plus cursor-pointer rounded-full bg-[#ff7f50] p-2 text-white hover:bg-orange-600"
 											title="Add to queue">
 											add
 										</button>
@@ -1123,24 +1064,18 @@
 						</ul>
 					{:else}
 						<div class="mt-8 text-center">
-							<p class="text-sm text-gray-600">
-								{selectedCategoryId === null
-									? 'No songs available.'
-									: 'No songs found in this category.'}
-							</p>
-							{#if selectedCategoryId !== null}
-								<button
-									onclick={goBackToCategories}
-									class="mt-4 rounded-lg bg-gray-500 px-4 py-2 font-sans text-white hover:bg-gray-600">
-									Back to Categories
-								</button>
-							{/if}
+							<p class="text-sm text-gray-600">No songs found in this category.</p>
+							<button
+								onclick={goBackToCategories}
+								class="mt-4 rounded-lg bg-gray-500 px-4 py-2 font-sans text-white hover:bg-gray-600">
+								Back to Categories
+							</button>
 						</div>
 					{/if}
 				{:else if filteredCategoryPrayers.length > 0}
 					<ul
-						class="flex w-full flex-col items-center justify-start space-y-3 overflow-y-auto px-4"
-						style="max-height: calc(100vh - 280px); scroll-behavior: smooth; touch-action: pan-y; padding-bottom: 24px;">
+						class="flex w-full flex-col items-center justify-center space-y-3 overflow-y-auto px-4"
+						style="max-height: calc(100% - 250px); scroll-behavior: smooth; touch-action: pan-y; padding-bottom: 24px;">
 						{#each filteredCategoryPrayers as item (item.id)}
 							<li
 								class="grid h-[70px] w-full max-w-[360px] grid-cols-[1fr_auto] items-center rounded-[20px] bg-white px-6 font-sans shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200">
@@ -1153,7 +1088,7 @@
 								<div class="col-start-2 col-end-3 ml-3 flex items-center space-x-2">
 									<button
 										onclick={() => fetchContent(item)}
-										class="action-btn eye material-symbols-outlined cursor-pointer text-black"
+										class="material-symbols-outlined eye cursor-pointer rounded-full bg-gray-100 p-2 text-black hover:bg-gray-200"
 										title="View content">
 										visibility
 									</button>
@@ -1172,6 +1107,38 @@
 					</div>
 				{/if}
 			{/if}
+
+			<!-- Prayer prompts (read-only, not queueable) -->
+			<div class="mt-6 px-4 pb-8">
+				<div class="flex items-center justify-between">
+					<h3 class="font-sans text-sm font-semibold text-black">PRAYER PROMPTS</h3>
+				</div>
+				<p class="mt-1 text-xs text-gray-600">Tap to view; not added to the queue.</p>
+				{#if prayers.length === 0}
+					<p class="mt-3 text-sm text-gray-500">Add prayers in the dashboard to show them here.</p>
+				{:else}
+					<ul class="mt-3 flex flex-col gap-2">
+						{#each prayers.slice(0, 5) as prayer (prayer.id)}
+							<li class="rounded-[14px] bg-white px-4 py-3 shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
+								<div class="flex items-center justify-between gap-3">
+									<div class="min-w-0">
+										<p class="truncate font-semibold">{prayer.title}</p>
+										{#if prayer.author}
+											<p class="truncate text-xs text-gray-500">{prayer.author}</p>
+										{/if}
+									</div>
+									<button
+										onclick={() => fetchContent(prayer)}
+										class="material-symbols-outlined h-8 w-8 flex-shrink-0 rounded-full bg-gray-100 text-black hover:bg-gray-200"
+										title="View prayer">
+										visibility
+									</button>
+								</div>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</div>
 		</div>
 	</div>
 {/if}
@@ -1188,13 +1155,13 @@
 					class="material-symbols-outlined slide cursor-pointer text-[#ff7f50]">remove</button>
 			</div>
 			<h1 class="flex justify-center text-center font-sans font-bold text-[#ff7f50]">
-				{contentTab === 'songs' ? 'Lyrics' : 'Prayer'}
+				{'lyrics' in (queue.find((item) => item.title === currentSong) ?? {}) ||
+				lyrics.includes('\n\n')
+					? 'Lyrics'
+					: 'Prayer'}
 			</h1>
 			<div
-				class="overflow-y-auto p-4 font-sans text-lg font-medium whitespace-pre-line text-[#ff7f50] {contentTab ===
-				'prayers'
-					? 'prayer-content text-center'
-					: 'song-content text-left'}"
+				class="overflow-y-auto p-4 text-center font-sans text-sm font-medium whitespace-pre-line text-[#ff7f50]"
 				style="max-height: 70%; width: 90%; margin: auto;">
 				{lyrics}
 				{#if currentAuthor}
@@ -1269,43 +1236,6 @@
 	}
 	.close {
 		font-size: var(--icon-size-md);
-	}
-
-	/* Uniform action buttons for list items */
-	.action-btn {
-		width: 36px;
-		height: 36px;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		border-radius: 9999px;
-		padding: 0;
-		border: 1px solid transparent;
-		box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
-		transition:
-			transform 160ms ease,
-			box-shadow 160ms ease,
-			background-color 160ms ease,
-			border-color 160ms ease;
-	}
-	.action-btn.eye {
-		background: #ffffff;
-		border-color: #e5e7eb;
-		color: #ff7f50;
-	}
-	.action-btn.eye:hover {
-		background: #f8fafc;
-		box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
-		transform: translateY(-1px);
-	}
-	.action-btn.plus {
-		background: linear-gradient(135deg, #ff945f, #ff7f50);
-		color: white;
-	}
-	.action-btn.plus:hover {
-		background: linear-gradient(135deg, #ff7f50, #e6632d);
-		box-shadow: 0 4px 12px rgba(255, 127, 80, 0.28);
-		transform: translateY(-1px);
 	}
 
 	/* Fix scrollbar styling */
@@ -1405,34 +1335,6 @@
 
 	.author-line-modal.after-content {
 		display: block;
-	}
-
-	/* Song content styling */
-	.song-content {
-		line-height: 1.8;
-		letter-spacing: 0.5px;
-		word-spacing: 0.1em;
-		max-width: 65ch;
-		margin-left: auto;
-		margin-right: auto;
-		padding-bottom: 1.5rem;
-	}
-
-	/* Prayer content styling */
-	.prayer-content {
-		line-height: 1.9;
-		letter-spacing: 0.5px;
-		word-spacing: 0.1em;
-		max-width: 65ch;
-		margin-left: auto;
-		margin-right: auto;
-		padding-bottom: 1.5rem;
-	}
-
-	.prayer-content::first-letter {
-		font-size: 3.5em;
-		font-weight: bold;
-		line-height: 1;
 	}
 
 	/* (Optional) Slight fade-in */
