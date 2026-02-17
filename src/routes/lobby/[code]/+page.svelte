@@ -349,6 +349,15 @@
 				)
 				.subscribe((status) => {
 					console.log(`📡 Queue subscription status: ${status}`);
+					if (status === 'SUBSCRIBED') {
+						console.log('✅ Realtime connection successful!');
+					} else if (status === 'CHANNEL_ERROR') {
+						console.warn('⚠️ Realtime connection failed. Using fallback polling...');
+						// Start aggressive polling if realtime fails
+						if (!categoriesRefreshInterval) {
+							categoriesRefreshInterval = setInterval(loadQueue, 2000);
+						}
+					}
 				});
 
 			// Set up real-time subscription for category changes
