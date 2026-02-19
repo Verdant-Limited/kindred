@@ -19,9 +19,9 @@
 	}
 </script>
 
-<div class="pt-8 pl-9">
-	<img src="/logo.svg" alt="Kindled" class="h-12 w-auto drop-shadow-2xl" />
-</div>
+<h1 class="pt-8 pl-9 font-sans text-xl font-bold tracking-widest text-black drop-shadow-2xl">
+	KINDLED
+</h1>
 
 {#if mode === 'create'}
 	<CreateRoom bind:this={createRoomRef} />
