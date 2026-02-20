@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { fade } from 'svelte/transition';
 	import { supabase } from '$lib/config/supabaseClient';
@@ -12,7 +13,7 @@
 	let codeInputRef: HTMLInputElement;
 
 	// Check for active session on mount
-	if (typeof window !== 'undefined') {
+	onMount(() => {
 		const savedRoomCode = localStorage.getItem('currentRoomCode');
 		const roomCodeTimestamp = localStorage.getItem('roomCodeTimestamp');
 		const isWithinSession = roomCodeTimestamp && Date.now() - parseInt(roomCodeTimestamp) < 3600000; // 1 hour
@@ -21,7 +22,7 @@
 			// Auto-rejoin the room
 			goto(`/lobby/${savedRoomCode}`);
 		}
-	}
+	});
 
 	function focusCodeInput() {
 		if (codeInputRef) {
@@ -30,11 +31,12 @@
 	}
 
 	function validateCode() {
-		if (!code.trim()) {
+		const trimmed = code.trim();
+		if (!trimmed) {
 			codeError = 'Please enter a room code';
-		} else if (code.length !== 4) {
+		} else if (trimmed.length !== 4) {
 			codeError = 'Room code must be 4 digits';
-		} else if (!/^\d+$/.test(code)) {
+		} else if (!/^\d+$/.test(trimmed)) {
 			codeError = 'Room code must contain only numbers';
 		} else {
 			codeError = '';
@@ -52,6 +54,7 @@
 			}
 
 			isLoading = true;
+			code = code.trim();
 
 			// Query the program using the 'id' column (text type)
 			const { data: programs, error } = await supabase.from('programs').select('*').eq('id', code);
@@ -106,15 +109,16 @@
 
 <div class="mt-16 flex flex-col items-center justify-center md:mt-24">
 	<div class="drop-shadow-l flex flex-row items-center justify-center">
-		<span class="material-symbols-outlined flame-left mt-26 text-black">local_fire_department</span>
-		<span class="material-symbols-outlined mt-26 inline-block text-black"
+		<span class="material-symbols-outlined flame-left mt-26 text-black dark:text-[#ffa843]"
 			>local_fire_department</span>
-		<span class="material-symbols-outlined flame-right mt-26 text-black"
+		<span class="material-symbols-outlined mt-26 inline-block text-black dark:text-[#ffa843]"
+			>local_fire_department</span>
+		<span class="material-symbols-outlined flame-right mt-26 text-black dark:text-[#ffa843]"
 			>local_fire_department</span>
 	</div>
 
 	<div class="mt-20 space-y-2">
-		<p class="text-sans text-xs font-bold">ROOM CODE</p>
+		<p class="text-sans text-xs font-bold text-black dark:text-white">ROOM CODE</p>
 		{#if errorMessage}
 			<p class="text-sm text-red-500" transition:fade>{errorMessage}</p>
 		{/if}
@@ -129,18 +133,18 @@
 			maxlength="4"
 			placeholder="Enter 4 digit code..."
 			on:blur={validateCode}
-			class="text-gray h-20 w-72 rounded-xl bg-stone-200 px-4 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)]
-                   outline-none drop-shadow-xl transition-all placeholder:text-gray-700 focus:ring-2 focus:ring-orange-400 focus:ring-offset-2
+			class="h-20 w-72 rounded-xl border border-gray-300 bg-white px-4 text-gray-900 shadow-sm transition-all outline-none
+                   placeholder:text-gray-400 focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 dark:border-[#3a3a3a] dark:bg-[#2a2a2a] dark:text-white dark:shadow-[0_4px_4px_0_rgba(0,0,0,0.5)] dark:placeholder:text-[#606060]
                    {codeError ? 'border-2 border-red-500' : ''}"
-			on:keypress={(e) => e.key === 'Enter' && handleJoin()} />
+			on:keydown={(e) => e.key === 'Enter' && handleJoin()} />
 	</div>
 
 	<button
-		class="mt-11 cursor-pointer justify-center rounded-xl bg-black px-16 py-3
+		class="mt-11 cursor-pointer justify-center rounded-xl bg-[#ffa843] px-16 py-3
                font-sans text-[14px] font-bold tracking-widest text-white
-               shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] transition-all
-               hover:bg-gray-700 focus:outline-none
-               focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+               shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] transition-all hover:bg-[#e38b2d]
+               focus:ring-2 focus:ring-orange-400
+               focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:shadow-[0_4px_4px_0_rgba(0,0,0,0.5)]"
 		on:click={handleJoin}
 		disabled={isLoading}
 		type="button">

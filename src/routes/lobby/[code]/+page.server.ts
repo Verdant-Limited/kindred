@@ -1,4 +1,4 @@
-import { error } from '@sveltejs/kit';
+import { error, isHttpError } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { supabase } from '$lib/config/supabaseClient';
 
@@ -18,7 +18,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			.from('programs')
 			.select('id, title, created_by')
 			.eq('id', code)
-			.single();
+			.maybeSingle();
 
 		if (dbError) throw dbError;
 
@@ -36,7 +36,8 @@ export const load: PageServerLoad = async ({ params }) => {
 				createdBy: room.created_by
 			}
 		};
-	} catch {
+	} catch (e) {
+		if (isHttpError(e)) throw e;
 		throw error(500, {
 			message: 'Failed to load room'
 		});
