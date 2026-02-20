@@ -2,7 +2,6 @@
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { supabase } from '$lib/config/supabaseClient';
 	import { slide, fade } from 'svelte/transition';
-	import { quintOut } from 'svelte/easing';
 	// QR code lib will be dynamically imported on client only
 
 	let { data } = $props();
@@ -78,6 +77,7 @@
 	let lyrics = $state('');
 	let currentSong = $state('');
 	let currentAuthor = $state('');
+	let currentItemType: 'song' | 'prayer' = $state('song');
 	let isLoading = $state(false);
 	let error: ErrorType = $state(null);
 	// When true, keep lyrics modal synced to the first queue item (arrow button). When false, respect manual view selection (e.g., prayers).
@@ -130,6 +130,7 @@
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	let categoriesSubscription: any;
 	let categoriesRefreshInterval: ReturnType<typeof setInterval> | null = null;
+	let queuePollingInterval: ReturnType<typeof setInterval> | null = null;
 
 	// Search/browse state
 	let contentTab: 'songs' | 'prayers' = $state('songs');
@@ -187,15 +188,6 @@
 		syncTimeout = setTimeout(() => {
 			isSyncingQueue = false;
 		}, 500);
-	}
-
-	// Scroll position preservation for search modal
-	let searchModalScrollPos = 0;
-	function saveSearchScroll(el: HTMLElement) {
-		searchModalScrollPos = el.scrollTop;
-	}
-	function restoreSearchScroll(el: HTMLElement) {
-		el.scrollTop = searchModalScrollPos;
 	}
 
 	// Analytics tracking for popular content
@@ -275,20 +267,27 @@
 			// Load Songs, Prayers, Categories, and Queue in parallel
 			const [songsResponse, prayersResponse, categoriesResponse, queueResponse] = await Promise.all(
 				[
-					supabase.from('songs').select(`
-						id,
-						title,
-						lyrics,
-						category_id
-					`),
+					supabase
+						.from('songs')
+						.select(
+							`
+							id,
+							title,
+							lyrics,
+							category_id
+						`
+						)
+						.order('title', { ascending: true }),
 
-					supabase.from('prayers').select(`
+					supabase.from('prayers').select(
+						`
 						id,
 						title,
 						content,
 						author,
 						category_id
-					`),
+					`
+					),
 
 					supabase.from('categories').select(`
 						id,
@@ -329,7 +328,7 @@
 			}
 
 			// Reconstruct queue items from database
-			queue = await reconstructQueueItems(queueResponse.data || []);
+			queue = reconstructQueueItems(queueResponse.data || []);
 
 			// Set up real-time subscription for queue changes
 			queueSubscription = supabase
@@ -396,16 +395,22 @@
 		if (categoriesRefreshInterval) {
 			clearInterval(categoriesRefreshInterval);
 		}
+		if (queuePollingInterval) {
+			clearInterval(queuePollingInterval);
+		}
+		if (syncTimeout) clearTimeout(syncTimeout);
+		if (successMessageTimeout) clearTimeout(successMessageTimeout);
+		if (errorMessageTimeout) clearTimeout(errorMessageTimeout);
 	});
 
 	// Function to reconstruct queue items from database records
-	async function reconstructQueueItems(
+	function reconstructQueueItems(
 		queueRecords: Array<{
 			item_id: number;
 			item_type: string;
 			position: number;
 		}>
-	): Promise<QueueItem[]> {
+	): QueueItem[] {
 		const reconstructed: QueueItem[] = [];
 
 		for (const record of queueRecords) {
@@ -439,7 +444,7 @@
 				return;
 			}
 
-			queue = await reconstructQueueItems(queueData || []);
+			queue = reconstructQueueItems(queueData || []);
 		} catch (e) {
 			console.error('Error reloading queue:', e);
 		}
@@ -607,8 +612,12 @@
 	function removeWithConfirmation(index: number) {
 		if (index < 0 || index >= queue.length) return;
 		const item = queue[index];
+		const itemId = item.id; // capture ID, not index — index may shift if queue updates while dialog is open
 		showConfirmDialog(`Remove "${item.title}" from queue?`, () => {
-			queueOperations.removeFromQueue(index);
+			const currentIndex = queue.findIndex((q) => q.id === itemId);
+			if (currentIndex !== -1) {
+				queueOperations.removeFromQueue(currentIndex);
+			}
 		});
 	}
 
@@ -632,11 +641,15 @@
 		// Close search sheet so only the content modal is visible
 		showSearch = false;
 		syncLyricsToQueue = false; // manual view shouldn't be overridden by queue sync
+		currentAuthor = ''; // Clear author immediately
 
-		if ('lyrics' in item && (item.chords == null || item.media == null)) {
-			await fetchSongComplete(item as Song);
-			currentAuthor = '';
+		if ('lyrics' in item) {
+			currentItemType = 'song';
+			if (item.chords == null || item.media == null) {
+				await fetchSongComplete(item as Song);
+			}
 		} else {
+			currentItemType = 'prayer';
 			currentAuthor = (item as Prayer).author ?? '';
 		}
 		lyrics = getContent(item);
@@ -693,12 +706,12 @@
 	const filteredCategoryPrayers = $derived(filterItems(categoryPrayers, searchQuery));
 	// Show all songs without category filtering
 	const filteredAllSongs = $derived(filterItems(songs, searchQuery));
-	const filteredAllPrayers = $derived(filterItems(prayers, searchQuery));
 
 	$effect(() => {
 		if (showLyrics && syncLyricsToQueue && queue.length > 0) {
 			const firstItem = queue[0];
 			if (currentSong !== firstItem.title) {
+				currentItemType = 'lyrics' in firstItem ? 'song' : 'prayer';
 				lyrics = getContent(firstItem);
 				currentSong = firstItem.title;
 				currentAuthor = 'lyrics' in firstItem ? '' : ((firstItem as Prayer).author ?? '');
@@ -743,10 +756,13 @@
 
 <!-- Header -->
 <div class="flex items-center justify-between px-3 py-4">
-	<h1 class="pt-6 pl-6 font-sans text-xl font-semibold tracking-widest text-black">KINDLE</h1>
+	<h1 class="pt-6 pl-6 font-sans text-xl font-semibold tracking-widest text-black dark:text-white">
+		KINDLED
+	</h1>
+
 	<div class="flex items-center gap-2 pt-6 pr-6">
 		<button
-			class="material-symbols-outlined share cursor-pointer"
+			class="material-symbols-outlined share cursor-pointer text-black dark:text-white"
 			aria-label="Share"
 			onclick={openShare}>
 			share
@@ -757,7 +773,7 @@
 <!-- Success Notification -->
 {#if showSuccessMessage}
 	<div
-		class="fixed top-20 left-1/2 z-50 -translate-x-1/2 transform rounded-lg bg-[#ff7f50] px-6 py-3 font-sans text-white shadow-lg"
+		class="fixed top-20 left-1/2 z-50 -translate-x-1/2 transform rounded-lg bg-[#ffa843] px-6 py-3 font-sans text-white shadow-lg"
 		in:slide={{ duration: 200 }}
 		out:slide={{ duration: 200 }}>
 		✓ Added successfully
@@ -777,18 +793,23 @@
 <!-- Confirmation Dialog -->
 {#if showConfirmation}
 	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-		<div class="w-full max-w-sm rounded-[20px] bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.3)]">
-			<h3 class="mb-4 text-center font-sans text-lg font-semibold text-black">Confirm Action</h3>
-			<p class="mb-6 text-center font-sans text-sm text-gray-700">{confirmationMessage}</p>
+		<div
+			class="w-full max-w-sm rounded-[20px] bg-white p-6 shadow-[0_4px_20px_rgba(0,0,0,0.3)] dark:bg-[#2a2a2a]">
+			<h3 class="mb-4 text-center font-sans text-lg font-semibold text-black dark:text-white">
+				Confirm Action
+			</h3>
+			<p class="mb-6 text-center font-sans text-sm text-gray-700 dark:text-gray-300">
+				{confirmationMessage}
+			</p>
 			<div class="flex gap-3">
 				<button
 					onclick={cancelConfirmation}
-					class="flex-1 rounded-lg bg-gray-300 px-4 py-2 font-sans font-semibold text-black hover:bg-gray-400">
+					class="flex-1 rounded-lg border border-gray-300 bg-gray-100 px-4 py-2 font-sans font-semibold text-gray-900 hover:bg-gray-200 dark:border-[#4a4a4a] dark:bg-[#3a3a3a] dark:text-white dark:hover:bg-[#4a4a4a]">
 					Cancel
 				</button>
 				<button
 					onclick={executeConfirmation}
-					class="flex-1 rounded-lg bg-[#ff7f50] px-4 py-2 font-sans font-semibold text-white hover:bg-[#e6632d]">
+					class="flex-1 rounded-lg bg-[#ffa843] px-4 py-2 font-sans font-semibold text-white shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] transition-all hover:bg-[#e38b2d]">
 					Remove
 				</button>
 			</div>
@@ -799,14 +820,14 @@
 <!-- Loading State -->
 {#if isLoading}
 	<div class="mt-10 flex items-center justify-center">
-		<p class="font-sans text-lg text-gray-600">Loading content...</p>
+		<p class="font-sans text-lg text-gray-600 dark:text-gray-400">Loading content...</p>
 	</div>
 {/if}
 
 <!-- Error State -->
 {#if error}
 	<div class="mt-10 flex items-center justify-center">
-		<p class="font-sans text-lg text-red-600">Error: {error}</p>
+		<p class="font-sans text-lg text-red-600 dark:text-red-400">Error: {error}</p>
 	</div>
 {/if}
 
@@ -818,25 +839,28 @@
 			type="text"
 			maxlength="20"
 			placeholder="Search for Prayer or Song..."
-			class="h-15 w-full rounded-[20px] bg-stone-300 pl-10 font-sans text-gray-400 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200" />
+			readonly
+			class="h-15 w-full rounded-[20px] border border-gray-300 bg-white pl-10 font-sans text-gray-900 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] placeholder:text-gray-400 hover:bg-gray-50 dark:border-[#3a3a3a] dark:bg-[#2a2a2a] dark:text-gray-400 dark:shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] dark:hover:bg-[#1a1a1a]" />
 		<span
-			class="material-symbols-outlined flame absolute top-1/2 left-1 -translate-y-1/2 transform text-[#ff7f50]">
+			class="material-symbols-outlined flame absolute top-1/2 left-1 -translate-y-1/2 transform text-[#ffa843]">
 			local_fire_department
 		</span>
 	</div>
 	<h2
-		class="mt-20 text-center font-sans text-[30px] leading-tight font-bold tracking-wide text-black">
+		class="mt-20 text-center font-sans text-[30px] leading-tight font-bold tracking-wide text-black dark:text-white">
 		{data.room.title}<br />
 	</h2>
-	<p class="mt-30 font-sans font-semibold text-black">LYRICS</p>
+	<p class="mt-30 font-sans font-semibold text-black dark:text-[#ffa843]">LYRICS</p>
 	<div class="mt-4 flex items-center justify-center">
 		<button
-			class="material-symbols-outlined arrow flex h-7 w-12 cursor-pointer items-center justify-center rounded-[10px] bg-white pb-8 text-center text-orange-400 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-gray-200"
+			class="material-symbols-outlined arrow flex h-7 w-12 cursor-pointer items-center justify-center rounded-[10px] bg-white pb-8 text-center text-[#ffa843] shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-gray-50 dark:bg-[#2a2a2a] dark:hover:bg-[#3a3a3a]"
 			disabled={queue.length === 0}
 			onclick={() => {
 				if (queue.length > 0) {
 					const firstItem = queue[0];
 					syncLyricsToQueue = true; // enable auto-sync when viewing from queue
+					currentItemType = 'song';
+					currentAuthor = '';
 					lyrics = getContent(firstItem);
 					currentSong = firstItem.title;
 					showLyrics = true;
@@ -850,15 +874,16 @@
 <!-- Queue Section -->
 <section class="mt-10 px-4 py-4 md:px-20">
 	<div class="flex items-center justify-between">
-		<h2 class="font-sans text-[10px] font-bold tracking-wide text-black">QUEUED</h2>
+		<h2 class="font-sans text-[10px] font-bold tracking-wide text-black dark:text-[#ffa843]">
+			QUEUED
+		</h2>
 		<span
-			class="mr-39 inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-white px-1.5 text-center font-semibold text-black">
+			class="mr-39 inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-gray-200 dark:bg-[#2a2a2a] px-1.5 text-center font-semibold text-black dark:text-[#ffa843]">
 			{queue.length}
 		</span>
 		<button
 			onclick={openSearch}
-			class="material-symbols-outlined add mb-1 h-7 w-10 cursor-pointer rounded-[20px]
-	                   bg-gray-300 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-white"
+			class="material-symbols-outlined add mb-1 h-7 w-10 cursor-pointer rounded-[20px] border border-gray-300 bg-gray-100 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-white dark:border-[#3a3a3a] dark:bg-[#2a2a2a] dark:hover:bg-[#3a3a3a]"
 			aria-label="Add song">
 			add
 		</button>
@@ -870,7 +895,7 @@
 			{#each queue as item, i (item.id)}
 				<li
 					class="queue-item"
-					style="opacity: {1 - i * 0.1};"
+					style="opacity: {Math.max(0.2, 1 - i * 0.08)};"
 					in:fade={{ duration: 150 }}
 					out:slide={{ duration: 150 }}>
 					<div class="flex min-w-0 flex-col">
@@ -885,7 +910,7 @@
 						{/if}
 						<button
 							onclick={() => removeWithConfirmation(i)}
-							class="close material-symbols-outlined text-[#ff7f50] hover:text-orange-600"
+							class="close material-symbols-outlined text-[#ffa843] hover:text-[#e38b2d]"
 							aria-label="Remove from queue">
 							close
 						</button>
@@ -894,7 +919,7 @@
 			{/each}
 		</ul>
 		{#if queue.length === 0}
-			<p class="py-8 text-center text-sm text-gray-500">No songs in queue</p>
+			<p class="py-8 text-center text-sm text-gray-500 dark:text-gray-400">No songs in queue</p>
 		{/if}
 	</div>
 </section>
@@ -903,13 +928,13 @@
 {#if showShare}
 	<div class="fixed inset-0 z-20 flex items-center justify-center bg-black/20 px-4">
 		<div
-			class="relative w-full max-w-sm rounded-[20px] bg-white p-4 shadow-[0_4px_12px_rgba(0,0,0,0.25)]">
+			class="relative w-full max-w-sm rounded-[20px] bg-white p-4 shadow-[0_4px_12px_rgba(0,0,0,0.25)] dark:bg-[#2a2a2a]">
 			<button
 				onclick={() => (showShare = false)}
-				class="material-symbols-outlined absolute top-2 right-2 cursor-pointer text-[#ff7f50] hover:text-orange-600">
+				class="material-symbols-outlined absolute top-2 right-2 cursor-pointer text-[#ffa843] hover:text-[#e38b2d]">
 				close
 			</button>
-			<h3 class="mb-3 text-center font-sans text-sm font-bold tracking-wide text-[#ff7f50]">
+			<h3 class="mb-3 text-center font-sans text-sm font-bold tracking-wide text-[#ffa843]">
 				SHARE ROOM
 			</h3>
 			<div class="grid grid-cols-[auto_1fr] items-center gap-3">
@@ -926,24 +951,26 @@
 				</div>
 				<!-- Code + actions -->
 				<div class="flex min-w-0 flex-col justify-center">
-					<p class="font-sans text-[10px] font-bold tracking-wide text-gray-500">ROOM CODE</p>
+					<p class="font-sans text-[10px] font-bold tracking-wide text-gray-500 dark:text-gray-400">
+						ROOM CODE
+					</p>
 					<div class="mt-1 flex items-center gap-2">
-						<span class="truncate font-sans text-2xl font-extrabold tracking-widest text-[#ff7f50]">
+						<span class="truncate font-sans text-2xl font-extrabold tracking-widest text-[#ffa843]">
 							{programCode}
 						</span>
 						<button
 							onclick={copyCode}
-							class="material-symbols-outlined flex h-8 w-8 items-center justify-center rounded-full bg-stone-200 text-black hover:bg-stone-300"
+							class="material-symbols-outlined flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-black hover:bg-gray-200 dark:bg-[#3a3a3a] dark:text-white dark:hover:bg-[#4a4a4a]"
 							title="Copy code">
 							content_copy
 						</button>
 					</div>
-					<p class="mt-4 line-clamp-2 text-xs break-all text-gray-500">
+					<p class="mt-4 line-clamp-2 text-xs break-all text-gray-500 dark:text-gray-400">
 						{shareUrl}
 					</p>
 					<div class="mt-3 flex gap-2">
 						<button
-							class="rounded-[12px] bg-black px-3 py-2 font-sans text-xs font-bold tracking-widest text-white hover:bg-gray-700"
+							class="rounded-[12px] border border-gray-300 bg-gray-100 px-3 py-2 font-sans text-xs font-bold tracking-widest text-gray-900 hover:bg-gray-200 dark:border-[#4a4a4a] dark:bg-[#3a3a3a] dark:text-white dark:hover:bg-[#4a4a4a]"
 							onclick={() => {
 								if (navigator.share) {
 									navigator.share({ title: 'Join my room', url: shareUrl }).catch(() => {});
@@ -952,7 +979,7 @@
 							NATIVE SHARE
 						</button>
 						<a
-							class="rounded-[12px] bg-stone-200 px-3 py-2 font-sans text-xs font-semibold text-black hover:bg-stone-300"
+							class="rounded-[12px] bg-gray-100 px-3 py-2 font-sans text-xs font-semibold text-black hover:bg-gray-200 dark:bg-[#3a3a3a] dark:text-white dark:hover:bg-[#4a4a4a]"
 							href={shareUrl}
 							target="_blank"
 							rel="noreferrer">
@@ -973,7 +1000,7 @@
 		out:slide|local={{ duration: 200 }}>
 		<div
 			bind:this={searchSheetEl}
-			class="h-[90%] w-full max-w-md overflow-y-auto rounded-t-[30px] bg-stone-300"
+			class="h-[90%] w-full max-w-md overflow-y-auto rounded-t-[30px] bg-white dark:bg-[#2a2a2a]"
 			style="transform: translateY({dragDeltaY}px); transition: {dragging
 				? 'none'
 				: 'transform 200ms ease'};">
@@ -992,7 +1019,7 @@
 			<!-- Header with close button -->
 			<div class="mt-6 flex flex-col items-center justify-center px-4">
 				<button
-					class="material-symbols-outlined slide cursor-pointer text-black"
+					class="material-symbols-outlined slide cursor-pointer text-[#ffa843]"
 					onclick={() => (showSearch = false)}>remove</button>
 
 				<!-- Search Input -->
@@ -1007,9 +1034,9 @@
 							: contentTab === 'songs'
 								? 'Search songs...'
 								: 'Search prayers...'}
-						class="h-[60px] w-full rounded-[20px] bg-white pl-10 font-sans text-gray-400 shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200" />
+						class="h-[60px] w-full rounded-[20px] border border-gray-300 bg-gray-50 pl-10 font-sans text-gray-900 shadow-sm placeholder:text-gray-400 hover:bg-white dark:border-[#3a3a3a] dark:bg-[#1a1a1a] dark:text-white dark:shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] dark:hover:bg-black" />
 					<span
-						class="material-symbols-outlined flame absolute top-1/2 left-1 -translate-y-1/2 transform text-[#ff7f50]">
+						class="material-symbols-outlined flame absolute top-1/2 left-1 -translate-y-1/2 transform text-[#ffa843]">
 						local_fire_department
 					</span>
 				</div>
@@ -1020,12 +1047,12 @@
 				{#if currentView === 'items' && selectedCategoryId !== null}
 					<button
 						onclick={goBackToCategories}
-						class="material-symbols-outlined mr-2 cursor-pointer text-black hover:text-gray-600">
+						class="material-symbols-outlined mr-2 cursor-pointer text-gray-900 hover:text-gray-700 dark:text-[#ffa843] dark:hover:text-[#e38b2d]">
 						arrow_back
 					</button>
 				{/if}
 				<h2
-					class="text-center font-sans text-[18px] font-medium tracking-wide text-black underline">
+					class="text-center font-sans text-[18px] font-medium tracking-wide text-gray-900 underline dark:text-[#ffa843]">
 					{currentView === 'categories'
 						? 'CATEGORIES'
 						: selectedCategoryId !== null
@@ -1041,8 +1068,8 @@
 				<div class="mb-2 flex items-center justify-center gap-2">
 					<button
 						class="rounded-full px-3 py-1 font-sans text-sm {contentTab === 'songs'
-							? 'bg-white text-black'
-							: 'bg-stone-200 text-gray-700'}"
+							? 'bg-[#ffa843] text-white'
+							: 'bg-gray-200 text-gray-700 dark:bg-[#2a2a2a] dark:text-gray-400'}"
 						onclick={() => {
 							contentTab = 'songs';
 							// For songs, show items directly without category selection
@@ -1056,8 +1083,8 @@
 					</button>
 					<button
 						class="rounded-full px-3 py-1 font-sans text-sm {contentTab === 'prayers'
-							? 'bg-white text-black'
-							: 'bg-stone-200 text-gray-700'}"
+							? 'bg-[#ffa843] text-white'
+							: 'bg-gray-200 text-gray-700 dark:bg-[#2a2a2a] dark:text-gray-400'}"
 						onclick={() => {
 							contentTab = 'prayers';
 							// For prayers, show categories first
@@ -1076,7 +1103,7 @@
 				<!-- Categories List -->
 				{#if categories.length === 0}
 					<div class="mt-20 flex flex-col items-center justify-center px-4">
-						<p class="text-center font-sans text-gray-600">No categories available yet.</p>
+						<p class="text-center font-sans text-gray-400">No categories available yet.</p>
 						<p class="mt-2 text-center font-sans text-sm text-gray-500">
 							Check back soon for content!
 						</p>
@@ -1089,16 +1116,16 @@
 							<li class="flex w-full items-center justify-center">
 								<button
 									type="button"
-									class="flex h-[60px] w-full max-w-[360px] items-center justify-between rounded-[20px] bg-white px-6 font-sans font-medium shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200"
+									class="flex h-[60px] w-full max-w-[360px] items-center justify-between rounded-[20px] bg-white border border-gray-200 dark:bg-[#2a2a2a] dark:border-[#3a3a3a] px-6 font-sans font-medium shadow-[0_2px_4px_0_rgba(0,0,0,0.06)] dark:shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-gray-50 dark:hover:bg-[#333333]"
 									onclick={() => selectCategory(category)}>
-									<span class="font-semibold">{category.name}</span>
+									<span class="font-semibold text-gray-900 dark:text-white">{category.name}</span>
 									<span class="material-symbols-outlined text-gray-400"> chevron_right </span>
 								</button>
 							</li>
 						{/each}
 					</ul>
 				{:else}
-					<p class="mt-4 text-center text-sm text-gray-600">No matching categories found.</p>
+					<p class="mt-4 text-center text-sm text-gray-400">No matching categories found.</p>
 				{/if}
 			{:else if currentView === 'items'}
 				<!-- Items for Selected Category or All Items -->
@@ -1109,10 +1136,10 @@
 							style="max-height: calc(100vh - 280px); scroll-behavior: smooth; touch-action: pan-y; padding-bottom: 24px;">
 							{#each selectedCategoryId === null ? filteredAllSongs : filteredCategorySongs as item (item.id)}
 								<li
-									class="flex h-16 w-full max-w-sm items-center justify-between gap-3 rounded-[20px] bg-white px-4 font-sans shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200 sm:px-6">
+									class="flex h-16 w-full max-w-sm items-center justify-between gap-3 rounded-[20px] bg-white border border-gray-200 dark:bg-[#2a2a2a] dark:border-[#3a3a3a] px-4 font-sans shadow-[0_2px_4px_0_rgba(0,0,0,0.06)] dark:shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-gray-50 dark:hover:bg-[#333333] sm:px-6">
 									<!-- Centered title -->
 									<div class="flex min-w-0 flex-1 justify-center">
-										<span class="block max-w-xs truncate text-center font-semibold"
+										<span class="block max-w-xs truncate text-center font-semibold text-gray-900 dark:text-white"
 											>{item.title}</span>
 									</div>
 									<!-- Action buttons (right) -->
@@ -1135,7 +1162,7 @@
 						</ul>
 					{:else}
 						<div class="mt-8 text-center">
-							<p class="text-sm text-gray-600">
+							<p class="text-sm text-gray-400">
 								{selectedCategoryId === null
 									? 'No songs available.'
 									: 'No songs found in this category.'}
@@ -1143,7 +1170,7 @@
 							{#if selectedCategoryId !== null}
 								<button
 									onclick={goBackToCategories}
-									class="mt-4 rounded-lg bg-gray-500 px-4 py-2 font-sans text-white hover:bg-gray-600">
+									class="mt-4 rounded-lg bg-[#ffa843] px-4 py-2 font-sans text-white hover:bg-[#e38b2d]">
 									Back to Categories
 								</button>
 							{/if}
@@ -1155,10 +1182,10 @@
 						style="max-height: calc(100vh - 280px); scroll-behavior: smooth; touch-action: pan-y; padding-bottom: 24px;">
 						{#each filteredCategoryPrayers as item (item.id)}
 							<li
-								class="flex h-16 w-full max-w-sm items-center justify-between gap-3 rounded-[20px] bg-white px-4 font-sans shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-stone-200 sm:px-6">
+								class="flex h-16 w-full max-w-sm items-center justify-between gap-3 rounded-[20px] bg-white border border-gray-200 dark:bg-[#2a2a2a] dark:border-[#3a3a3a] px-4 font-sans shadow-[0_2px_4px_0_rgba(0,0,0,0.06)] dark:shadow-[0_4px_4px_0_rgba(0,0,0,0.25)] hover:bg-gray-50 dark:hover:bg-[#333333] sm:px-6">
 								<!-- Centered title -->
 								<div class="flex min-w-0 flex-1 justify-center">
-									<span class="block max-w-xs truncate text-center font-semibold"
+									<span class="block max-w-xs truncate text-center font-semibold text-gray-900 dark:text-white"
 										>{item.title}</span>
 								</div>
 								<!-- Action buttons (right) -->
@@ -1175,10 +1202,10 @@
 					</ul>
 				{:else}
 					<div class="mt-8 text-center">
-						<p class="text-sm text-gray-600">No prayers found in this category.</p>
+						<p class="text-sm text-gray-400">No prayers found in this category.</p>
 						<button
 							onclick={goBackToCategories}
-							class="mt-4 rounded-lg bg-gray-500 px-4 py-2 font-sans text-white hover:bg-gray-600">
+							class="mt-4 rounded-lg bg-[#ffa843] px-4 py-2 font-sans text-white hover:bg-[#e38b2d]">
 							Back to Categories
 						</button>
 					</div>
@@ -1193,18 +1220,18 @@
 		class="fixed inset-0 z-10 flex items-end justify-center px-4"
 		in:slide|local={{ duration: 300 }}
 		out:slide|local={{ duration: 200 }}>
-		<div class="h-[90%] w-full max-w-md rounded-t-[30px] bg-white">
+		<div class="h-[90%] w-full max-w-md rounded-t-[30px] bg-white dark:bg-[#2a2a2a]">
 			<div class="flex flex-col items-center justify-center">
 				<button
 					onclick={() => (showLyrics = false)}
-					class="material-symbols-outlined slide cursor-pointer text-[#ff7f50]">remove</button>
+					class="material-symbols-outlined slide cursor-pointer text-[#ffa843]">remove</button>
 			</div>
-			<h1 class="flex justify-center text-center font-sans font-bold text-[#ff7f50]">
-				{contentTab === 'songs' ? 'Lyrics' : 'Prayer'}
+			<h1 class="flex justify-center text-center font-sans font-bold text-[#ffa843]">
+				{currentItemType === 'song' ? 'Lyrics' : 'Prayer'}
 			</h1>
 			<div
-				class="overflow-y-auto p-4 font-sans text-lg font-medium whitespace-pre-line text-[#ff7f50] {contentTab ===
-				'prayers'
+				class="overflow-y-auto p-4 font-sans text-lg font-medium whitespace-pre-line text-gray-900 dark:text-white {currentItemType ===
+				'prayer'
 					? 'prayer-content text-center'
 					: 'song-content text-left'}"
 				style="max-height: 70%; width: 90%; margin: auto;">
@@ -1241,26 +1268,26 @@
 			'wght' 600,
 			'GRAD' 0,
 			'opsz' 24;
-		filter: drop-shadow(0 0 8px rgba(255, 127, 80, 0.6))
-			drop-shadow(0 0 16px rgba(255, 127, 80, 0.4)) drop-shadow(0 0 24px rgba(255, 127, 80, 0.2));
+		filter: drop-shadow(0 0 8px rgba(255, 168, 67, 0.6))
+			drop-shadow(0 0 16px rgba(255, 168, 67, 0.4)) drop-shadow(0 0 24px rgba(255, 168, 67, 0.2));
 		transition: all 0.3s ease;
 		animation: flameGlow 2s ease-in-out infinite alternate;
 	}
 
 	.flame:hover {
 		transform: scale(1.15);
-		filter: drop-shadow(0 0 12px rgba(255, 80, 80, 0.8))
-			drop-shadow(0 0 24px rgba(255, 127, 80, 0.6)) drop-shadow(0 0 36px rgba(255, 127, 80, 0.4));
+		filter: drop-shadow(0 0 12px rgba(255, 168, 67, 0.8))
+			drop-shadow(0 0 24px rgba(255, 168, 67, 0.6)) drop-shadow(0 0 36px rgba(255, 168, 67, 0.4));
 	}
 
 	@keyframes flameGlow {
 		0% {
-			filter: drop-shadow(0 0 8px rgba(255, 127, 80, 0.6))
-				drop-shadow(0 0 16px rgba(255, 127, 80, 0.4)) drop-shadow(0 0 24px rgba(255, 127, 80, 0.2));
+			filter: drop-shadow(0 0 8px rgba(255, 168, 67, 0.6))
+				drop-shadow(0 0 16px rgba(255, 168, 67, 0.4)) drop-shadow(0 0 24px rgba(255, 168, 67, 0.2));
 		}
 		100% {
-			filter: drop-shadow(0 0 12px rgba(255, 127, 80, 0.8))
-				drop-shadow(0 0 20px rgba(255, 127, 80, 5)) drop-shadow(0 0 28px rgba(255, 127, 80, 0.3));
+			filter: drop-shadow(0 0 12px rgba(255, 168, 67, 0.8))
+				drop-shadow(0 0 20px rgba(255, 168, 67, 0.5)) drop-shadow(0 0 28px rgba(255, 168, 67, 0.3));
 		}
 	}
 
@@ -1303,7 +1330,7 @@
 	.action-btn.eye {
 		background: #ffffff;
 		border-color: #e5e7eb;
-		color: #ff7f50;
+		color: #ffa843;
 	}
 	.action-btn.eye:hover {
 		background: #f8fafc;
@@ -1311,12 +1338,12 @@
 		transform: translateY(-1px);
 	}
 	.action-btn.plus {
-		background: linear-gradient(135deg, #ff945f, #ff7f50);
+		background: linear-gradient(135deg, #ffb870, #ffa843);
 		color: white;
 	}
 	.action-btn.plus:hover {
-		background: linear-gradient(135deg, #ff7f50, #e6632d);
-		box-shadow: 0 4px 12px rgba(255, 127, 80, 0.28);
+		background: linear-gradient(135deg, #ffa843, #e38b2d);
+		box-shadow: 0 4px 12px rgba(255, 168, 67, 0.28);
 		transform: translateY(-1px);
 	}
 
@@ -1326,7 +1353,7 @@
 		overflow-y: auto;
 		padding-right: 4px; /* Space for scrollbar */
 		scrollbar-width: thin;
-		scrollbar-color: #ff7f50 transparent;
+		scrollbar-color: #ffa843 transparent;
 	}
 
 	.queue-container::-webkit-scrollbar {
@@ -1339,14 +1366,14 @@
 	}
 
 	.queue-container::-webkit-scrollbar-thumb {
-		background-color: #ff7f50;
+		background-color: #ffa843;
 		border-radius: 4px;
 		border: 1px solid transparent;
 		background-clip: content-box;
 	}
 
 	.queue-container::-webkit-scrollbar-thumb:hover {
-		background-color: #e6632d;
+		background-color: #e38b2d;
 	}
 
 	.queue-list {
@@ -1371,6 +1398,13 @@
 			box-shadow 0.2s ease;
 	}
 
+	@media (prefers-color-scheme: dark) {
+		.queue-item {
+			background: #2a2a2a;
+			box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+		}
+	}
+
 	.queue-item:hover {
 		transform: translateY(-1px);
 		box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
@@ -1384,6 +1418,12 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	@media (prefers-color-scheme: dark) {
+		.queue-item span {
+			color: #e5e7eb;
+		}
 	}
 
 	.queue-author,
@@ -1401,7 +1441,7 @@
 
 	.queue-author {
 		font-size: 10px;
-		color: #ff7f50;
+		color: #ffa843;
 	}
 
 	.author-line-modal {
@@ -1409,7 +1449,7 @@
 		margin-top: 12px;
 		font-size: 0.75rem;
 		line-height: 1.1;
-		color: #ff7f50; /* same color as content text */
+		color: #ffa843; /* same color as content text */
 		font-style: italic;
 		opacity: 0.9;
 		padding-right: 4px;
@@ -1494,7 +1534,7 @@
 	.drag-handle-bar {
 		width: 48px;
 		height: 5px;
-		background: #d1d5db; /* gray-300 */
+		background: #ffa843; /* flame color */
 		border-radius: 9999px;
 	}
 </style>

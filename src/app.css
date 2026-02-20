@@ -5,8 +5,9 @@
 	--font-sans: 'DM Sans', 'sans-serif';
 	--font-serif: 'DM Serif Display', 'sans-serif';
 
-	--color-background: #fafafa;
-	--color-primary: #2e2e2e;
+	--color-background: light-dark(#ffffff, #1a1a1a);
+	--color-primary: light-dark(#000000, #ffffff);
+	--color-secondary: light-dark(#6b7280, #a0a0a0);
 	--color-fire: #ffa843;
 
 	--drop-shadow-soft: 0 0px 16px rgba(0, 0, 0, 0.04);
@@ -15,6 +16,7 @@
 html,
 body {
 	min-height: 100dvh; /* dynamic viewport for mobile browsers */
+	color-scheme: light dark; /* Enable system dark mode detection */
 }
 
 body {
